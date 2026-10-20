@@ -1,0 +1,544 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum StoreRole {
+  OWNER // akses penuh: laporan, harga modal, pengaturan
+  STAFF // kasir: jual + lihat stok
+}
+
+enum SaleStatus {
+  COMPLETED
+  VOID
+}
+
+enum PaymentMethod {
+  CASH
+  QRIS
+  TRANSFER
+  OTHER
+  CREDIT // bon / piutang pelanggan
+}
+
+enum CashMovementType {
+  IN // kas masuk manual (tambah modal, dst.)
+  OUT // kas keluar manual (beli es batu, ongkir, dst.)
+}
+
+enum ShiftStatus {
+  OPEN
+  CLOSED
+}
+
+enum StockCountStatus {
+  DRAFT
+  COMPLETED
+}
+
+enum StockMovementType {
+  INITIAL // stok awal saat varian dibuat
+  PURCHASE // stok masuk dari pembelian/restock
+  SALE // berkurang karena penjualan
+  SALE_VOID // dikembalikan karena penjualan di-void
+  ADJUSTMENT // koreksi manual (hasil stok opname, rusak, hilang)
+  RETURN // retur dari pelanggan
+}
+
+// ============================================================
+// AUTH (Better Auth)
+// Kalau ada beda field antar versi, ikuti versi library.
+// ============================================================
+
+model User {
+  id             String          @id
+  name           String
+  email          String          @unique
+  emailVerified  Boolean         @default(false)
+  image          String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  sessions       Session[]
+  accounts       Account[]
+  memberships    StoreMember[]
+  sales          Sale[]          @relation("SaleCashier")
+  voidedSales    Sale[]          @relation("SaleVoidedBy")
+  stockMovements StockMovement[]
+  purchases      Purchase[]
+  expenses       Expense[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ============================================================
+// MULTI-TENANT CORE
+// Semua tabel bisnis di bawah ini punya storeId.
+// ============================================================
+
+model Store {
+  id             String           @id @default(cuid())
+  name           String
+  slug           String           @unique
+  waNumber       String? // opsional, tidak lagi dipakai untuk order
+  timezone       String           @default("Asia/Jakarta") // dipakai untuk laporan harian/bulanan
+  receiptCounter Int              @default(0) // nomor struk berurutan per toko
+  plan           String           @default("free")
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  members        StoreMember[]
+  categories     Category[]
+  products       Product[]
+  variants       ProductVariant[]
+  suppliers      Supplier[]
+  purchases      Purchase[]
+  sales          Sale[]
+  stockMovements StockMovement[]
+  expenses       Expense[]
+  variantUnits   ProductVariantUnit[]
+  customers      Customer[]
+  customerPayments CustomerPayment[]
+  cashShifts     CashShift[]
+  cashMovements  CashMovement[]
+  stockCounts    StockCount[]
+}
+
+model StoreMember {
+  id        String    @id @default(cuid())
+  userId    String
+  storeId   String
+  role      StoreRole @default(OWNER)
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store     Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, storeId])
+  @@index([storeId])
+}
+
+// ============================================================
+// PRODUK & VARIAN
+// Yang dijual dan dihitung stoknya selalu VARIAN.
+// Produk tanpa varian = satu varian default bernama "Standar".
+// ============================================================
+
+model Category {
+  id       String    @id @default(cuid())
+  storeId  String
+  name     String
+  store    Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  @@unique([storeId, name])
+  @@index([storeId])
+}
+
+model Product {
+  id          String           @id @default(cuid())
+  storeId     String
+  categoryId  String?
+  name        String
+  description String?
+  imageUrl    String?
+  isActive    Boolean          @default(true) // arsipkan, jangan hapus kalau sudah punya riwayat
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  store       Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  category    Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  variants    ProductVariant[]
+
+  @@index([storeId, isActive])
+  @@index([categoryId])
+}
+
+model ProductVariant {
+  id           String          @id @default(cuid())
+  storeId      String // denormalisasi: untuk filter tenant dan unique per toko (harus sama dengan Product.storeId)
+  productId    String
+  name         String          @default("Standar") // contoh: "Large", "Merah / XL"
+  sku          String?
+  barcode      String?
+  unit         String          @default("pcs") // pcs, kg, liter, ons, bungkus, dst.
+  allowDecimal Boolean         @default(false) // true untuk curah (kg, liter)
+  price        Int // harga jual per unit, rupiah
+  costPrice    Int             @default(0) // harga modal per unit, rupiah
+  trackStock   Boolean         @default(true)
+  stockQty     Decimal         @default(0) @db.Decimal(14, 3) // cache; sumber kebenaran = StockMovement
+  minStock     Decimal?        @db.Decimal(14, 3) // batas peringatan stok menipis
+  isActive     Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  store        Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product      Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  saleItems    SaleItem[]
+  movements    StockMovement[]
+  purchaseItems PurchaseItem[]
+  units        ProductVariantUnit[]
+  countItems   StockCountItem[]
+
+  @@unique([storeId, sku])
+  @@unique([storeId, barcode])
+  @@index([storeId, isActive])
+  @@index([productId])
+}
+
+// ============================================================
+// STOK (LEDGER)
+// Setiap perubahan stok dicatat di sini dalam transaksi DB yang
+// sama dengan perubahan ProductVariant.stockQty.
+// qty bertanda: positif = masuk, negatif = keluar.
+// ============================================================
+
+model StockMovement {
+  id           String            @id @default(cuid())
+  storeId      String
+  variantId    String
+  type         StockMovementType
+  qty          Decimal           @db.Decimal(14, 3)
+  balanceAfter Decimal           @db.Decimal(14, 3) // stok setelah perubahan ini
+  saleId       String?
+  purchaseId   String?
+  note         String?
+  createdById  String?
+  createdAt    DateTime          @default(now())
+  store        Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  variant      ProductVariant    @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  sale         Sale?             @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  purchase     Purchase?         @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  createdBy    User?             @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([storeId, variantId, createdAt])
+  @@index([saleId])
+  @@index([purchaseId])
+}
+
+// ============================================================
+// PENJUALAN (KASIR)
+// Jangan hapus transaksi; pakai status VOID.
+// Laporan harian/bulanan dihitung dari tabel ini
+// (kelompokkan per hari memakai Store.timezone).
+// ============================================================
+
+model Sale {
+  id             String         @id @default(cuid())
+  storeId        String
+  receiptNo      Int // berurutan per toko, dari Store.receiptCounter
+  status         SaleStatus     @default(COMPLETED)
+  cashierId      String?
+  customerName   String? // nama pembeli bebas (non-bon)
+  customerId     String? // wajib untuk paymentMethod CREDIT
+  subtotal       Int
+  discount       Int            @default(0)
+  total          Int
+  paymentMethod  PaymentMethod  @default(CASH)
+  amountPaid     Int
+  changeAmount   Int            @default(0)
+  creditAmount   Int            @default(0) // bagian yang jadi bon (CREDIT: = total)
+  note           String?
+  idempotencyKey String // dibuat client; cegah transaksi dobel saat retry
+  voidedAt       DateTime?
+  voidReason     String?
+  voidedById     String?
+  createdAt      DateTime       @default(now())
+  store          Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  cashier        User?          @relation("SaleCashier", fields: [cashierId], references: [id], onDelete: SetNull)
+  voidedBy       User?          @relation("SaleVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
+  customer       Customer?      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  items          SaleItem[]
+  movements      StockMovement[]
+  payments       CustomerPayment[]
+
+  @@unique([storeId, receiptNo])
+  @@unique([storeId, idempotencyKey])
+  @@index([storeId, createdAt])
+  @@index([storeId, status, createdAt])
+  @@index([storeId, customerId])
+}
+
+model SaleItem {
+  id          String          @id @default(cuid())
+  saleId      String
+  variantId   String?
+  productName String // snapshot
+  variantName String // snapshot
+  unit        String // snapshot
+  qty         Decimal         @db.Decimal(14, 3)
+  price       Int // snapshot harga jual per unit
+  costPrice   Int // snapshot harga modal per unit
+  lineTotal   Int // round(price * qty)
+  costTotal   Int // round(costPrice * qty), untuk hitung laba
+  sale        Sale            @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  variant     ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([saleId])
+  @@index([variantId])
+}
+
+// ============================================================
+// PEMBELIAN / STOK MASUK
+// ============================================================
+
+model Supplier {
+  id        String     @id @default(cuid())
+  storeId   String
+  name      String
+  phone     String?
+  createdAt DateTime   @default(now())
+  store     Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  purchases Purchase[]
+
+  @@unique([storeId, name])
+  @@index([storeId])
+}
+
+model Purchase {
+  id          String          @id @default(cuid())
+  storeId     String
+  supplierId  String?
+  invoiceNo   String?
+  note        String?
+  total       Int
+  purchasedAt DateTime        @default(now())
+  createdById String?
+  createdAt   DateTime        @default(now())
+  store       Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  supplier    Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  createdBy   User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  items       PurchaseItem[]
+  movements   StockMovement[]
+
+  @@index([storeId, purchasedAt])
+}
+
+model PurchaseItem {
+  id         String         @id @default(cuid())
+  purchaseId String
+  variantId  String
+  unitName   String // satuan yang dipakai saat beli (snapshot), contoh: karung
+  unitFactor Decimal        @db.Decimal(14, 3) // snapshot: satuan dasar per 1 satuan beli
+  qtyInput   Decimal        @db.Decimal(14, 3) // jumlah dalam satuan beli
+  unitCost   Int // harga per satuan beli
+  qty        Decimal        @db.Decimal(14, 3) // jumlah dalam SATUAN DASAR (yang masuk ke stok)
+  costPrice  Int // harga modal per satuan dasar pada pembelian ini
+  lineTotal  Int
+  purchase   Purchase       @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  variant    ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@index([purchaseId])
+  @@index([variantId])
+}
+
+// ============================================================
+// PENGELUARAN OPERASIONAL (listrik, sewa, gaji, dst.)
+// Pendapatan TIDAK disimpan di sini; dihitung dari Sale.
+// ============================================================
+
+model Expense {
+  id          String   @id @default(cuid())
+  storeId     String
+  category    String
+  amount      Int
+  note        String?
+  spentAt     DateTime @default(now())
+  createdById String?
+  createdAt   DateTime @default(now())
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([storeId, spentAt])
+}
+
+// ============================================================
+// KONVERSI SATUAN
+// Contoh: varian "Beras" satuan dasar kg; satuan beli "karung" faktor 50.
+// ============================================================
+
+model ProductVariantUnit {
+  id        String         @id @default(cuid())
+  storeId   String
+  variantId String
+  name      String // karung, dus, lusin, dst.
+  factor    Decimal        @db.Decimal(14, 3) // jumlah satuan dasar per 1 satuan ini
+  createdAt DateTime       @default(now())
+  store     Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([variantId, name])
+  @@index([storeId])
+}
+
+// ============================================================
+// BON / PIUTANG PELANGGAN
+// Saldo bon pelanggan = SUM(Sale.creditAmount, status COMPLETED)
+//                       - SUM(CustomerPayment.amount, voidedAt NULL)
+// Pembayaran muka (DP) saat transaksi bon disimpan sebagai CustomerPayment
+// dengan saleId terisi.
+// ============================================================
+
+model Customer {
+  id          String            @id @default(cuid())
+  storeId     String
+  name        String
+  phone       String?
+  note        String?
+  creditLimit Int? // batas bon; null = tanpa batas
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  store       Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  sales       Sale[]
+  payments    CustomerPayment[]
+
+  @@index([storeId, name])
+}
+
+model CustomerPayment {
+  id          String        @id @default(cuid())
+  storeId     String
+  customerId  String
+  saleId      String? // terisi bila ini pembayaran muka (DP) pada transaksi bon
+  amount      Int
+  method      PaymentMethod // CASH / QRIS / TRANSFER / OTHER (bukan CREDIT)
+  note        String?
+  createdById String? // id user pencatat (tanpa FK)
+  voidedAt    DateTime?
+  createdAt   DateTime      @default(now())
+  store       Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer    Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  sale        Sale?         @relation(fields: [saleId], references: [id], onDelete: SetNull)
+
+  @@index([storeId, createdAt])
+  @@index([customerId])
+  @@index([saleId])
+}
+
+// ============================================================
+// TUTUP KAS (SHIFT)
+// Maksimal satu shift OPEN per toko: openStoreId berisi storeId selama
+// shift terbuka, dan NULL setelah ditutup (unique mengizinkan banyak NULL).
+// Kas yang diharapkan dihitung dari penjualan tunai + pembayaran bon tunai
+// + kas masuk/keluar manual pada rentang waktu shift.
+// ============================================================
+
+model CashShift {
+  id           String         @id @default(cuid())
+  storeId      String
+  openStoreId  String?        @unique
+  status       ShiftStatus    @default(OPEN)
+  openedById   String? // id user (tanpa FK)
+  openedAt     DateTime       @default(now())
+  openingCash  Int
+  closedById   String?
+  closedAt     DateTime?
+  expectedCash Int? // snapshot saat ditutup
+  countedCash  Int? // hasil hitung fisik
+  difference   Int? // countedCash - expectedCash
+  note         String?
+  store        Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  movements    CashMovement[]
+
+  @@index([storeId, openedAt])
+}
+
+model CashMovement {
+  id          String           @id @default(cuid())
+  storeId     String
+  shiftId     String
+  type        CashMovementType
+  amount      Int
+  note        String
+  createdById String?
+  createdAt   DateTime         @default(now())
+  store       Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  shift       CashShift        @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+
+  @@index([shiftId])
+}
+
+// ============================================================
+// STOK OPNAME
+// DRAFT: hitungan fisik diisi bertahap. COMPLETED: selisih diterapkan
+// sebagai StockMovement ADJUSTMENT dan snapshot disimpan di item.
+// ============================================================
+
+model StockCount {
+  id          String           @id @default(cuid())
+  storeId     String
+  status      StockCountStatus @default(DRAFT)
+  note        String?
+  createdById String?
+  createdAt   DateTime         @default(now())
+  completedAt DateTime?
+  store       Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  items       StockCountItem[]
+
+  @@index([storeId, createdAt])
+}
+
+model StockCountItem {
+  id        String         @id @default(cuid())
+  countId   String
+  variantId String
+  counted   Decimal?       @db.Decimal(14, 3) // hitungan fisik (null = belum dihitung)
+  systemQty Decimal?       @db.Decimal(14, 3) // stok sistem saat disahkan
+  diffQty   Decimal?       @db.Decimal(14, 3) // counted - systemQty
+  costPrice Int            @default(0) // snapshot harga modal saat disahkan
+  count     StockCount     @relation(fields: [countId], references: [id], onDelete: Cascade)
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([countId, variantId])
+  @@index([variantId])
+}
