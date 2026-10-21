@@ -7,10 +7,6 @@ datasource db {
   provider = "postgresql"
 }
 
-// ============================================================
-// ENUMS
-// ============================================================
-
 enum StoreRole {
   OWNER // akses penuh: laporan, harga modal, pengaturan
   STAFF // kasir: jual + lihat stok
@@ -52,11 +48,6 @@ enum StockMovementType {
   ADJUSTMENT // koreksi manual (hasil stok opname, rusak, hilang)
   RETURN // retur dari pelanggan
 }
-
-// ============================================================
-// AUTH (Better Auth)
-// Kalau ada beda field antar versi, ikuti versi library.
-// ============================================================
 
 model User {
   id             String          @id
@@ -125,11 +116,6 @@ model Verification {
   @@map("verification")
 }
 
-// ============================================================
-// MULTI-TENANT CORE
-// Semua tabel bisnis di bawah ini punya storeId.
-// ============================================================
-
 model Store {
   id             String           @id @default(cuid())
   name           String
@@ -141,6 +127,7 @@ model Store {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
   members        StoreMember[]
+  priceTiers     VariantPriceTier[]
   categories     Category[]
   products       Product[]
   variants       ProductVariant[]
@@ -169,12 +156,6 @@ model StoreMember {
   @@unique([userId, storeId])
   @@index([storeId])
 }
-
-// ============================================================
-// PRODUK & VARIAN
-// Yang dijual dan dihitung stoknya selalu VARIAN.
-// Produk tanpa varian = satu varian default bernama "Standar".
-// ============================================================
 
 model Category {
   id       String    @id @default(cuid())
@@ -225,6 +206,7 @@ model ProductVariant {
   store        Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
   product      Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
   saleItems    SaleItem[]
+  priceTiers   VariantPriceTier[]
   movements    StockMovement[]
   purchaseItems PurchaseItem[]
   units        ProductVariantUnit[]
@@ -235,13 +217,6 @@ model ProductVariant {
   @@index([storeId, isActive])
   @@index([productId])
 }
-
-// ============================================================
-// STOK (LEDGER)
-// Setiap perubahan stok dicatat di sini dalam transaksi DB yang
-// sama dengan perubahan ProductVariant.stockQty.
-// qty bertanda: positif = masuk, negatif = keluar.
-// ============================================================
 
 model StockMovement {
   id           String            @id @default(cuid())
@@ -265,13 +240,6 @@ model StockMovement {
   @@index([saleId])
   @@index([purchaseId])
 }
-
-// ============================================================
-// PENJUALAN (KASIR)
-// Jangan hapus transaksi; pakai status VOID.
-// Laporan harian/bulanan dihitung dari tabel ini
-// (kelompokkan per hari memakai Store.timezone).
-// ============================================================
 
 model Sale {
   id             String         @id @default(cuid())
@@ -328,10 +296,6 @@ model SaleItem {
   @@index([variantId])
 }
 
-// ============================================================
-// PEMBELIAN / STOK MASUK
-// ============================================================
-
 model Supplier {
   id        String     @id @default(cuid())
   storeId   String
@@ -382,11 +346,6 @@ model PurchaseItem {
   @@index([variantId])
 }
 
-// ============================================================
-// PENGELUARAN OPERASIONAL (listrik, sewa, gaji, dst.)
-// Pendapatan TIDAK disimpan di sini; dihitung dari Sale.
-// ============================================================
-
 model Expense {
   id          String   @id @default(cuid())
   storeId     String
@@ -402,11 +361,6 @@ model Expense {
   @@index([storeId, spentAt])
 }
 
-// ============================================================
-// KONVERSI SATUAN
-// Contoh: varian "Beras" satuan dasar kg; satuan beli "karung" faktor 50.
-// ============================================================
-
 model ProductVariantUnit {
   id        String         @id @default(cuid())
   storeId   String
@@ -420,14 +374,6 @@ model ProductVariantUnit {
   @@unique([variantId, name])
   @@index([storeId])
 }
-
-// ============================================================
-// BON / PIUTANG PELANGGAN
-// Saldo bon pelanggan = SUM(Sale.creditAmount, status COMPLETED)
-//                       - SUM(CustomerPayment.amount, voidedAt NULL)
-// Pembayaran muka (DP) saat transaksi bon disimpan sebagai CustomerPayment
-// dengan saleId terisi.
-// ============================================================
 
 model Customer {
   id          String            @id @default(cuid())
@@ -465,14 +411,6 @@ model CustomerPayment {
   @@index([saleId])
 }
 
-// ============================================================
-// TUTUP KAS (SHIFT)
-// Maksimal satu shift OPEN per toko: openStoreId berisi storeId selama
-// shift terbuka, dan NULL setelah ditutup (unique mengizinkan banyak NULL).
-// Kas yang diharapkan dihitung dari penjualan tunai + pembayaran bon tunai
-// + kas masuk/keluar manual pada rentang waktu shift.
-// ============================================================
-
 model CashShift {
   id           String         @id @default(cuid())
   storeId      String
@@ -508,12 +446,6 @@ model CashMovement {
   @@index([shiftId])
 }
 
-// ============================================================
-// STOK OPNAME
-// DRAFT: hitungan fisik diisi bertahap. COMPLETED: selisih diterapkan
-// sebagai StockMovement ADJUSTMENT dan snapshot disimpan di item.
-// ============================================================
-
 model StockCount {
   id          String           @id @default(cuid())
   storeId     String
@@ -541,4 +473,18 @@ model StockCountItem {
 
   @@unique([countId, variantId])
   @@index([variantId])
+}
+
+model VariantPriceTier {
+  id        String         @id @default(cuid())
+  storeId   String
+  variantId String
+  minQty    Decimal        @db.Decimal(14, 3) // dalam satuan dasar
+  price     Int            
+  createdAt DateTime       @default(now())
+  store     Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([variantId, minQty])
+  @@index([storeId])
 }

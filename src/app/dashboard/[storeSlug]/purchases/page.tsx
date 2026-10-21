@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireStoreAccess } from "@/lib/tenant";
 import { buttonVariants } from "@/components/ui/button";
-
+export const instant = false;
 const rupiah = (n: number) =>
   new Intl.NumberFormat("id-ID", {
     style: "currency",
