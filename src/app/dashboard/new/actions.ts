@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { requireSession } from "@/lib/session";
 import { RESERVED_SLUGS, normalizeWa, slugify } from "@/lib/slug";
+import { PRESETS, isBusinessType } from "@/lib/features";
 
 export type CreateStoreState = { error?: string };
 
@@ -17,8 +18,10 @@ export async function createStore(
   const name = String(formData.get("name") ?? "").trim();
   const slug = slugify(String(formData.get("slug") ?? ""));
   const waNumber = normalizeWa(String(formData.get("waNumber") ?? ""));
+  const businessType = String(formData.get("businessType") ?? "");
 
   if (name.length < 2) return { error: "Nama toko minimal 2 karakter" };
+  if (!isBusinessType(businessType)) return { error: "Pilih jenis usaha" };
   if (slug.length < 3) return { error: "Alamat toko minimal 3 karakter" };
   if (RESERVED_SLUGS.includes(slug))
     return { error: "Alamat toko ini tidak bisa dipakai" };
@@ -31,6 +34,8 @@ export async function createStore(
         name,
         slug,
         waNumber,
+        businessType,
+        features: [...PRESETS[businessType]],
         members: { create: { userId: session.user.id, role: "OWNER" } },
       },
     });

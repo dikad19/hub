@@ -24,8 +24,22 @@ export type SaleResult =
 const METHODS = ["CASH", "QRIS", "TRANSFER", "OTHER"];
 const MAX_RUPIAH = 2_000_000_000;
 const MAX_MILLI = BigInt(1_000_000_000); // 1.000.000 satuan per baris
+const ZERO = BigInt(0);
+const THOUSAND = BigInt(1000);
+
+// true  = menu RECIPE ditolak kalau stok bahan kurang
+// false = boleh terjual walau stok bahan jadi minus (stok bahan sering telat dicatat)
+const STRICT_INGREDIENTS = true;
+
 const fail = (error: string): SaleResult => ({ ok: false, error });
 const digits = (v: unknown) => String(v ?? "").replace(/\D/g, "");
+const divRound = (a: bigint, b: bigint) => (a + b / BigInt(2)) / b;
+const need = <T>(x: T | null): T => {
+  if (x === null) throw new Error("TOO_BIG");
+  return x;
+};
+const addTo = (m: Map<string, bigint>, id: string, q: bigint) =>
+  m.set(id, (m.get(id) ?? ZERO) + q);
 
 export async function createSale(
   storeSlug: string,
@@ -37,7 +51,6 @@ export async function createSale(
   const key = String(input?.idempotencyKey ?? "");
   if (key.length < 16 || key.length > 64) return fail("Permintaan tidak valid");
 
-  // Sudah pernah diproses (retry / tap ganda)? Kembalikan hasil yang sama.
   const existing = await prisma.sale.findUnique({
     where: {
       storeId_idempotencyKey: { storeId: store.id, idempotencyKey: key },
@@ -57,15 +70,11 @@ export async function createSale(
   if (!METHODS.includes(input.paymentMethod))
     return fail("Metode pembayaran tidak valid");
 
-  // Gabungkan baris yang varian-nya sama
   const milliById = new Map<string, bigint>();
   for (const it of input.items) {
     const m = toMilli(String(it.qty));
-    if (m === null || m <= BigInt(0)) return fail("Jumlah tidak valid");
-    milliById.set(
-      String(it.variantId),
-      (milliById.get(String(it.variantId)) ?? BigInt(0)) + m,
-    );
+    if (m === null || m <= ZERO) return fail("Jumlah tidak valid");
+    addTo(milliById, String(it.variantId), m);
   }
   for (const m of milliById.values()) {
     if (m > MAX_MILLI) return fail("Jumlah terlalu besar");
@@ -82,34 +91,50 @@ export async function createSale(
   try {
     const sale = await prisma.$transaction(
       async (tx) => {
-        // 1. Nomor struk. Meng-update baris toko = penjualan satu toko berurutan.
+        // 1. Nomor struk
         const { receiptCounter } = await tx.store.update({
           where: { id: store.id },
           data: { receiptCounter: { increment: 1 } },
           select: { receiptCounter: true },
         });
 
-        // 2. Ambil varian (hanya milik toko ini dan aktif)
+        // 2. Ambil varian yang dijual (aktif + isSellable) beserta resepnya
         const ids = [...milliById.keys()];
         const variants = await tx.productVariant.findMany({
           where: {
             id: { in: ids },
             storeId: store.id,
             isActive: true,
+            isSellable: true,
             product: { isActive: true },
           },
-          include: { product: { select: { name: true } }, priceTiers: true },
+          include: {
+            product: { select: { name: true } },
+            priceTiers: true,
+            recipeLines: {
+              include: {
+                ingredient: {
+                  include: { product: { select: { name: true } } },
+                },
+              },
+            },
+          },
         });
         if (variants.length !== ids.length) throw new Error("UNAVAILABLE");
         const byId = new Map(variants.map((v) => [v.id, v]));
 
-        // 3. Hitung baris (harga selalu dari database, bukan dari client)
+        // 3. Hitung baris + kebutuhan stok
+        const labels = new Map<string, string>(); // untuk pesan error
+        const saleDemand = new Map<string, bigint>(); // DIRECT: varian itu sendiri
+        const consDemand = new Map<string, bigint>(); // RECIPE: bahan yang terpakai
+
         let subtotal = 0;
         const lines = ids.map((id) => {
           const v = byId.get(id)!;
           const milli = milliById.get(id)!;
           const label = variantLabel(v.product.name, v.name);
-          if (!v.allowDecimal && milli % BigInt(1000) !== BigInt(0)) {
+          labels.set(v.id, label);
+          if (!v.allowDecimal && milli % THOUSAND !== ZERO) {
             throw new Error("INTEGER:" + label);
           }
           const qty = milliToString(milli);
@@ -118,11 +143,37 @@ export async function createSale(
             return m === null ? [] : [{ minQtyMilli: m, price: t.price }];
           });
           const price = priceForQty(v.price, tiers, milli);
-          const lineTotal = lineTotalOf(price, qty)!;
-          const costTotal = lineTotalOf(v.costPrice, qty)!;
+          const lineTotal = need(lineTotalOf(price, qty));
           if (lineTotal > MAX_RUPIAH) throw new Error("TOO_BIG");
           subtotal += lineTotal;
-          return { v, qty, price, lineTotal, costTotal, label };
+
+          // HPP + kebutuhan stok menurut mode stok
+          let costTotal = 0;
+          let costPrice = v.costPrice;
+          if (v.stockMode === "RECIPE") {
+            if (v.recipeLines.length === 0)
+              throw new Error("NO_RECIPE:" + label);
+            for (const r of v.recipeLines) {
+              const perPortion = need(toMilli(r.qty.toFixed(3)));
+              const used = divRound(perPortion * milli, THOUSAND);
+              if (used <= ZERO) continue;
+              addTo(consDemand, r.ingredientVariantId, used);
+              labels.set(
+                r.ingredientVariantId,
+                variantLabel(r.ingredient.product.name, r.ingredient.name),
+              );
+              costTotal += need(
+                lineTotalOf(r.ingredient.costPrice, milliToString(used)),
+              );
+            }
+            costPrice = Number(divRound(BigInt(costTotal) * THOUSAND, milli));
+          } else {
+            costTotal = need(lineTotalOf(v.costPrice, qty));
+            if (v.stockMode === "DIRECT") addTo(saleDemand, v.id, milli);
+            // NONE: tidak ada stok yang berkurang
+          }
+
+          return { v, qty, price, lineTotal, costTotal, costPrice };
         });
         if (subtotal > MAX_RUPIAH) throw new Error("TOO_BIG");
 
@@ -145,19 +196,48 @@ export async function createSale(
           change = amountPaid - total;
         }
 
-        // 5. Kurangi stok secara atomik (urut by id agar urutan lock konsisten)
-        const tracked = lines
-          .filter((l) => l.v.trackStock)
-          .sort((a, b) => (a.v.id < b.v.id ? -1 : 1));
-        for (const l of tracked) {
-          const r = await tx.productVariant.updateMany({
-            where: { id: l.v.id, storeId: store.id, stockQty: { gte: l.qty } },
-            data: { stockQty: { decrement: l.qty } },
+        // 5. Kurangi stok secara atomik (urut by id agar urutan lock konsisten).
+        //    Satu varian bisa kena dua jenis kebutuhan (dijual langsung + dipakai resep).
+        const demandIds = [
+          ...new Set([...saleDemand.keys(), ...consDemand.keys()]),
+        ].sort();
+        const moves: {
+          variantId: string;
+          type: "SALE" | "CONSUMPTION";
+          qty: string;
+          balanceAfter: Prisma.Decimal;
+        }[] = [];
+
+        for (const vid of demandIds) {
+          const s = saleDemand.get(vid) ?? ZERO;
+          const c = consDemand.get(vid) ?? ZERO;
+          const after = await tx.productVariant.update({
+            where: { id: vid, storeId: store.id },
+            data: { stockQty: { decrement: milliToString(s + c) } },
+            select: { stockQty: true },
           });
-          if (r.count === 0) throw new Error("STOCK:" + l.label);
+          if ((s > ZERO || STRICT_INGREDIENTS) && after.stockQty.isNegative()) {
+            throw new Error("STOCK:" + (labels.get(vid) ?? "bahan"));
+          }
+          if (s > ZERO) {
+            moves.push({
+              variantId: vid,
+              type: "SALE",
+              qty: "-" + milliToString(s),
+              balanceAfter: after.stockQty.plus(milliToString(c)),
+            });
+          }
+          if (c > ZERO) {
+            moves.push({
+              variantId: vid,
+              type: "CONSUMPTION",
+              qty: "-" + milliToString(c),
+              balanceAfter: after.stockQty,
+            });
+          }
         }
 
-        // 6. Simpan transaksi + item (snapshot nama, harga, modal)
+        // 6. Simpan transaksi + item (snapshot) + pembayaran
         const created = await tx.sale.create({
           data: {
             storeId: store.id,
@@ -167,7 +247,6 @@ export async function createSale(
             subtotal,
             discount,
             total,
-            paymentMethod: method,
             amountPaid,
             changeAmount: change,
             note: note || null,
@@ -180,31 +259,34 @@ export async function createSale(
                 unit: l.v.unit,
                 qty: l.qty,
                 price: l.price,
-                costPrice: l.v.costPrice,
+                costPrice: l.costPrice,
                 lineTotal: l.lineTotal,
                 costTotal: l.costTotal,
               })),
             },
+            ...(total > 0
+              ? {
+                  paymentLines: {
+                    create: [{ storeId: store.id, method, amount: total }],
+                  },
+                }
+              : {}),
           },
           select: { id: true, receiptNo: true },
         });
 
-        // 7. Catat ledger stok
-        for (const l of tracked) {
-          const { stockQty } = await tx.productVariant.findUniqueOrThrow({
-            where: { id: l.v.id },
-            select: { stockQty: true },
-          });
-          await tx.stockMovement.create({
-            data: {
+        // 7. Ledger stok
+        if (moves.length > 0) {
+          await tx.stockMovement.createMany({
+            data: moves.map((m) => ({
               storeId: store.id,
-              variantId: l.v.id,
-              type: "SALE",
-              qty: "-" + l.qty,
-              balanceAfter: stockQty,
+              variantId: m.variantId,
+              type: m.type,
+              qty: m.qty,
+              balanceAfter: m.balanceAfter,
               saleId: created.id,
               createdById: user.id,
-            },
+            })),
           });
         }
 
@@ -217,7 +299,6 @@ export async function createSale(
     revalidatePath(`/dashboard/${storeSlug}/products`);
     return { ok: true, saleId: sale.id, receiptNo: sale.receiptNo };
   } catch (e) {
-    // Dua request dengan key yang sama berbarengan: salah satunya kalah di unique constraint
     if (
       e instanceof Prisma.PrismaClientKnownRequestError &&
       e.code === "P2002"
@@ -241,6 +322,8 @@ export async function createSale(
         return fail(`Stok tidak cukup: ${e.message.slice(6)}`);
       if (e.message.startsWith("INTEGER:"))
         return fail(`"${e.message.slice(8)}" tidak boleh desimal`);
+      if (e.message.startsWith("NO_RECIPE:"))
+        return fail(`Resep "${e.message.slice(10)}" belum diisi`);
     }
     throw e;
   }

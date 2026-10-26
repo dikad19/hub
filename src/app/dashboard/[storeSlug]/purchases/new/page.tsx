@@ -15,7 +15,12 @@ export default async function NewPurchasePage({
 
   const [variants, suppliers] = await Promise.all([
     prisma.productVariant.findMany({
-      where: { storeId: store.id, isActive: true, product: { isActive: true } },
+      where: {
+        storeId: store.id,
+        isActive: true,
+        stockMode: "DIRECT",
+        product: { isActive: true },
+      },
       include: {
         product: { select: { name: true } },
         units: { orderBy: { name: "asc" } },

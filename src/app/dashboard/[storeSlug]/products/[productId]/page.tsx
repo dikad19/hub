@@ -1,14 +1,20 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { ChevronLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireStoreAccess } from "@/lib/tenant";
+import { variantLabel } from "@/lib/pos";
+import { Skeleton } from "@/components/ui/skeleton";
 import { adjustStock, updateProduct } from "../actions";
-import { ProductForm } from "../product-form";
+import { ProductForm, type VariantExtras } from "../product-form";
 import { AdjustStockForm } from "../adjust-stock-form";
 import { addVariantUnit, deleteVariantUnit } from "../unit-actions";
 import { addPriceTier, deletePriceTier } from "../tier-actions";
 import { VariantUnitsForm } from "../variant-units-form";
 import { VariantTiersForm } from "../variant-tiers-form";
+import { saveRecipe } from "../recipe-actions";
+import { RecipeForm } from "../recipe-form";
 
 type Params = Promise<{ storeSlug: string; productId: string }>;
 
@@ -17,7 +23,14 @@ const num = (v: { toString(): string }) =>
 
 export default function EditProductPage({ params }: { params: Params }) {
   return (
-    <Suspense fallback={<p>Memuat...</p>}>
+    <Suspense
+      fallback={
+        <div className="space-y-6">
+          <Skeleton className="h-12 w-64" />
+          <Skeleton className="h-96 rounded-lg" />
+        </div>
+      }
+    >
       <EditProduct params={params} />
     </Suspense>
   );
@@ -28,103 +41,176 @@ async function EditProduct({ params }: { params: Params }) {
   const { store, role } = await requireStoreAccess(storeSlug);
   if (role !== "OWNER") redirect(`/dashboard/${storeSlug}/products`);
 
-  const product = await prisma.product.findFirst({
-    where: { id: productId, storeId: store.id },
-    include: {
-      variants: {
-        orderBy: { createdAt: "asc" },
-        include: { units: { orderBy: { name: "asc" } }, priceTiers: true },
+  const [product, ingredientRows] = await Promise.all([
+    prisma.product.findFirst({
+      where: { id: productId, storeId: store.id },
+      include: {
+        variants: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            units: { orderBy: { name: "asc" } },
+            priceTiers: true,
+            recipeLines: true,
+          },
+        },
       },
-    },
-  });
+    }),
+    prisma.productVariant.findMany({
+      where: { storeId: store.id, isActive: true, stockMode: "DIRECT" },
+      include: { product: { select: { name: true } } },
+      orderBy: [{ product: { name: "asc" } }, { name: "asc" }],
+    }),
+  ]);
+
   if (!product) notFound();
+  const ingredients = ingredientRows.map((i) => ({
+    id: i.id,
+    label: variantLabel(i.product.name, i.name),
+    unit: i.unit,
+  }));
+
+  const ingById = new Map(ingredients.map((i) => [i.id, i]));
+
+  // Form bawaan dipindah ke modal per varian.
+  // Semua tab disiapkan; ProductForm yang memilih sesuai jenis stok.
+  const extras: VariantExtras = {};
+  for (const v of product.variants) {
+    const tabs: VariantExtras[string] = [];
+
+    {
+      tabs.push({
+        id: "stock",
+        label: "Stok",
+        content: (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Stok saat ini{" "}
+              <span className="font-medium text-foreground">
+                {num(v.stockQty)} {v.unit}
+              </span>
+              . Stok hanya bisa diubah lewat penyesuaian, supaya tercatat di
+              riwayat.
+            </p>
+            <AdjustStockForm
+              action={adjustStock.bind(null, storeSlug, v.id)}
+              unit={v.unit}
+            />
+          </div>
+        ),
+      });
+    }
+
+    {
+      tabs.push({
+        id: "recipe",
+        label: "Resep",
+        badge: v.recipeLines.length,
+        summary: v.recipeLines
+          .map((r) => {
+            const g = ingById.get(r.ingredientVariantId);
+            return `${g?.label ?? "Bahan"} ${num(r.qty)} ${g?.unit ?? ""}`.trim();
+          })
+          .join(" · "),
+        content: (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Jumlah bahan per 1 porsi, dalam satuan dasar bahan. Stok bahan
+              berkurang otomatis saat menu terjual.
+            </p>
+            <RecipeForm
+              action={saveRecipe.bind(null, storeSlug, v.id)}
+              ingredients={ingredients}
+              defaults={v.recipeLines.map((r) => ({
+                ingredientVariantId: r.ingredientVariantId,
+                qty: r.qty.toString(),
+              }))}
+            />
+          </div>
+        ),
+      });
+    }
+
+    tabs.push({
+      id: "units",
+      label: "Satuan beli",
+      badge: v.units.length,
+      content: (
+        <VariantUnitsForm
+          baseUnit={v.unit}
+          allowDecimal={v.allowDecimal}
+          units={v.units.map((u) => ({
+            id: u.id,
+            name: u.name,
+            factor: u.factor.toFixed(3),
+          }))}
+          addAction={addVariantUnit.bind(null, storeSlug, v.id)}
+          removeAction={deleteVariantUnit.bind(null, storeSlug)}
+        />
+      ),
+    });
+    tabs.push({
+      id: "tiers",
+      label: "Harga grosir",
+      badge: v.priceTiers.length,
+      content: (
+        <VariantTiersForm
+          unit={v.unit}
+          allowDecimal={v.allowDecimal}
+          basePrice={v.price}
+          tiers={v.priceTiers.map((t) => ({
+            id: t.id,
+            minQty: t.minQty.toFixed(3),
+            price: t.price,
+          }))}
+          addAction={addPriceTier.bind(null, storeSlug, v.id)}
+          removeAction={deletePriceTier.bind(null, storeSlug)}
+        />
+      ),
+    });
+
+    extras[v.id] = tabs;
+  }
 
   return (
-    <div className="space-y-8">
-      <div className="space-y-4">
-        <h1 className="text-xl font-semibold">Edit produk</h1>
-        <ProductForm
-          action={updateProduct.bind(null, storeSlug, product.id)}
-          submitLabel="Simpan perubahan"
-          defaults={{
-            name: product.name,
-            isActive: product.isActive,
-            // Decimal diubah ke string di batas server -> client
-            variants: product.variants.map((v) => ({
-              id: v.id,
-              name: v.name,
-              sku: v.sku ?? "",
-              barcode: v.barcode ?? "",
-              unit: v.unit,
-              allowDecimal: v.allowDecimal,
-              price: String(v.price),
-              costPrice: String(v.costPrice),
-              stock: "",
-              minStock: v.minStock?.toString() ?? "",
-              isActive: v.isActive,
-            })),
-          }}
-        />
+    <div className="space-y-6">
+      <div className="space-y-1">
+        <Link
+          href={`/dashboard/${storeSlug}/products`}
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ChevronLeft className="size-4" />
+          Produk
+        </Link>
+        <h1 className="text-xl font-semibold tracking-tight">Edit produk</h1>
       </div>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Penyesuaian stok</h2>
-        <p className="text-sm text-muted-foreground">
-          Stok hanya bisa diubah lewat penyesuaian, supaya tercatat di riwayat.
-        </p>
-        <ul className="space-y-3">
-          {product.variants.map((v) => (
-            <li key={v.id} className="space-y-2 rounded-md border p-3">
-              <p className="text-sm">
-                <span className="font-medium">{v.name}</span>
-                <span className="ml-2 text-muted-foreground">
-                  stok saat ini {num(v.stockQty)} {v.unit}
-                </span>
-              </p>
-              <AdjustStockForm
-                action={adjustStock.bind(null, storeSlug, v.id)}
-                unit={v.unit}
-              />
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">
-          Satuan beli &amp; harga grosir
-        </h2>
-        <ul className="space-y-3">
-          {product.variants.map((v) => (
-            <li key={v.id} className="space-y-4 rounded-md border p-3">
-              <p className="text-sm font-medium">{v.name}</p>
-              <VariantUnitsForm
-                baseUnit={v.unit}
-                allowDecimal={v.allowDecimal}
-                units={v.units.map((u) => ({
-                  id: u.id,
-                  name: u.name,
-                  factor: u.factor.toFixed(3),
-                }))}
-                addAction={addVariantUnit.bind(null, storeSlug, v.id)}
-                removeAction={deleteVariantUnit.bind(null, storeSlug)}
-              />
-              <VariantTiersForm
-                unit={v.unit}
-                allowDecimal={v.allowDecimal}
-                basePrice={v.price}
-                tiers={v.priceTiers.map((t) => ({
-                  id: t.id,
-                  minQty: t.minQty.toFixed(3),
-                  price: t.price,
-                }))}
-                addAction={addPriceTier.bind(null, storeSlug, v.id)}
-                removeAction={deletePriceTier.bind(null, storeSlug)}
-              />
-            </li>
-          ))}
-        </ul>
-      </section>
+      <ProductForm
+        action={updateProduct.bind(null, storeSlug, product.id)}
+        submitLabel="Simpan perubahan"
+        businessType={store.businessType}
+        features={store.features}
+        extras={extras}
+        defaults={{
+          name: product.name,
+          isActive: product.isActive,
+          // Decimal diubah ke string di batas server -> client
+          variants: product.variants.map((v) => ({
+            id: v.id,
+            name: v.name,
+            sku: v.sku ?? "",
+            barcode: v.barcode ?? "",
+            unit: v.unit,
+            allowDecimal: v.allowDecimal,
+            price: String(v.price),
+            costPrice: String(v.costPrice),
+            stock: "",
+            minStock: v.minStock?.toString() ?? "",
+            isActive: v.isActive,
+            stockMode: v.stockMode,
+            isSellable: v.isSellable,
+          })),
+        }}
+      />
     </div>
   );
 }

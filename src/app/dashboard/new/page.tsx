@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { requireSession } from "@/lib/session";
 import { NewStoreForm } from "./new-store-form";
+import { prisma } from "@/lib/prisma";
 
 export default function NewStorePage() {
   return (
@@ -11,6 +12,9 @@ export default function NewStorePage() {
 }
 
 async function Guard() {
-  await requireSession();
-  return <NewStoreForm />;
+  const session = await requireSession();
+  const count = await prisma.storeMember.count({
+    where: { userId: session.user.id },
+  });
+  return <NewStoreForm canCancel={count > 0} />;
 }

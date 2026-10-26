@@ -211,9 +211,7 @@ export async function createPurchase(
 
           // Bobot stok lama hanya dihitung kalau stok > 0 dan modal lamanya diketahui
           // (costPrice 0 = belum pernah diisi, jangan menarik rata-rata ke bawah).
-          const oldMilli = c.v.trackStock
-            ? (toMilli(cur.stockQty.toFixed(3)) ?? ZERO)
-            : ZERO;
+          const oldMilli = toMilli(cur.stockQty.toFixed(3)) ?? ZERO;
           const weight = oldMilli > ZERO && cur.costPrice > 0 ? oldMilli : ZERO;
 
           const newCost = Number(
@@ -227,9 +225,7 @@ export async function createPurchase(
             where: { id: c.v.id },
             data: {
               costPrice: newCost,
-              ...(c.v.trackStock
-                ? { stockQty: { increment: c.qtyBaseStr } }
-                : {}),
+              stockQty: { increment: c.qtyBaseStr },
             },
             select: { stockQty: true },
           });

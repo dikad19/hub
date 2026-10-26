@@ -40,13 +40,21 @@ enum StockCountStatus {
   COMPLETED
 }
 
+enum StockMode {
+  NONE    // tidak ada stok (jasa, menu tanpa hitung stok)
+  DIRECT  // stok dihitung langsung di varian ini (retail, bahan baku)
+  RECIPE  // stok berkurang lewat bahan di resep (menu restoran)
+}
+
 enum StockMovementType {
-  INITIAL // stok awal saat varian dibuat
-  PURCHASE // stok masuk dari pembelian/restock
-  SALE // berkurang karena penjualan
-  SALE_VOID // dikembalikan karena penjualan di-void
-  ADJUSTMENT // koreksi manual (hasil stok opname, rusak, hilang)
-  RETURN // retur dari pelanggan
+  INITIAL
+  PURCHASE
+  SALE
+  SALE_VOID
+  ADJUSTMENT
+  RETURN
+  CONSUMPTION       // bahan terpakai karena menu terjual
+  CONSUMPTION_VOID  // dikembalikan karena penjualan di-void
 }
 
 model User {
@@ -122,13 +130,17 @@ model Store {
   slug           String           @unique
   waNumber       String? // opsional, tidak lagi dipakai untuk order
   timezone       String           @default("Asia/Jakarta") // dipakai untuk laporan harian/bulanan
-  receiptCounter Int              @default(0) // nomor struk berurutan per toko
+  receiptCounter Int              @default(0)
+  returnCounter  Int @default(0)
+  salePayments   SalePayment[]
+  saleReturns    SaleReturn[]
   plan           String           @default("free")
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
   members        StoreMember[]
   priceTiers     VariantPriceTier[]
   categories     Category[]
+  recipeItems    RecipeItem[]
   products       Product[]
   variants       ProductVariant[]
   suppliers      Supplier[]
@@ -142,6 +154,8 @@ model Store {
   cashShifts     CashShift[]
   cashMovements  CashMovement[]
   stockCounts    StockCount[]
+  businessType BusinessType @default(RETAIL)
+  features     String[]     @default([])
 }
 
 model StoreMember {
@@ -158,14 +172,19 @@ model StoreMember {
 }
 
 model Category {
-  id       String    @id @default(cuid())
-  storeId  String
-  name     String
-  store    Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  products Product[]
+  id        String     @id @default(cuid())
+  storeId   String
+  parentId  String?
+  name      String
+  sortOrder Int        @default(0)
+  isActive  Boolean    @default(true)
+  store     Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children  Category[] @relation("CategoryTree")
+  products  Product[]
 
-  @@unique([storeId, name])
-  @@index([storeId])
+  @@unique([storeId, parentId, name])
+  @@index([storeId, parentId])
 }
 
 model Product {
@@ -197,7 +216,8 @@ model ProductVariant {
   allowDecimal Boolean         @default(false) // true untuk curah (kg, liter)
   price        Int // harga jual per unit, rupiah
   costPrice    Int             @default(0) // harga modal per unit, rupiah
-  trackStock   Boolean         @default(true)
+  stockMode  StockMode @default(DIRECT)  // gantikan trackStock
+  isSellable Boolean   @default(true)
   stockQty     Decimal         @default(0) @db.Decimal(14, 3) // cache; sumber kebenaran = StockMovement
   minStock     Decimal?        @db.Decimal(14, 3) // batas peringatan stok menipis
   isActive     Boolean         @default(true)
@@ -207,6 +227,8 @@ model ProductVariant {
   product      Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
   saleItems    SaleItem[]
   priceTiers   VariantPriceTier[]
+  recipeLines RecipeItem[] @relation("MenuRecipe")       // bahan yang dipakai menu ini
+  usedIn      RecipeItem[] @relation("IngredientUsage")
   movements    StockMovement[]
   purchaseItems PurchaseItem[]
   units        ProductVariantUnit[]
@@ -216,6 +238,22 @@ model ProductVariant {
   @@unique([storeId, barcode])
   @@index([storeId, isActive])
   @@index([productId])
+}
+
+model RecipeItem {
+  id                  String         @id @default(cuid())
+  storeId             String
+  menuVariantId       String
+  ingredientVariantId String
+  qty                 Decimal        @db.Decimal(14, 3) // dalam satuan dasar bahan, per 1 porsi menu
+  createdAt           DateTime       @default(now())
+  store               Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  menu                ProductVariant @relation("MenuRecipe", fields: [menuVariantId], references: [id], onDelete: Cascade)
+  ingredient          ProductVariant @relation("IngredientUsage", fields: [ingredientVariantId], references: [id], onDelete: Restrict)
+
+  @@unique([menuVariantId, ingredientVariantId])
+  @@index([storeId])
+  @@index([ingredientVariantId])
 }
 
 model StockMovement {
@@ -235,7 +273,10 @@ model StockMovement {
   sale         Sale?             @relation(fields: [saleId], references: [id], onDelete: SetNull)
   purchase     Purchase?         @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
   createdBy    User?             @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  saleReturnId String?
+  saleReturn   SaleReturn? @relation(fields: [saleReturnId], references: [id], onDelete: SetNull)
 
+  @@index([saleReturnId])
   @@index([storeId, variantId, createdAt])
   @@index([saleId])
   @@index([purchaseId])
@@ -252,10 +293,9 @@ model Sale {
   subtotal       Int
   discount       Int            @default(0)
   total          Int
-  paymentMethod  PaymentMethod  @default(CASH)
   amountPaid     Int
   changeAmount   Int            @default(0)
-  creditAmount   Int            @default(0) // bagian yang jadi bon (CREDIT: = total)
+  creditAmount   Int            @default(0)
   note           String?
   idempotencyKey String // dibuat client; cegah transaksi dobel saat retry
   voidedAt       DateTime?
@@ -268,7 +308,8 @@ model Sale {
   customer       Customer?      @relation(fields: [customerId], references: [id], onDelete: Restrict)
   items          SaleItem[]
   movements      StockMovement[]
-  payments       CustomerPayment[]
+  paymentLines   SalePayment[]
+  returns        SaleReturn[]
 
   @@unique([storeId, receiptNo])
   @@unique([storeId, idempotencyKey])
@@ -291,7 +332,7 @@ model SaleItem {
   costTotal   Int // round(costPrice * qty), untuk hitung laba
   sale        Sale            @relation(fields: [saleId], references: [id], onDelete: Cascade)
   variant     ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
-
+  returnItems SaleReturnItem[]
   @@index([saleId])
   @@index([variantId])
 }
@@ -387,6 +428,7 @@ model Customer {
   store       Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
   sales       Sale[]
   payments    CustomerPayment[]
+  returns SaleReturn[]
 
   @@index([storeId, name])
 }
@@ -395,7 +437,6 @@ model CustomerPayment {
   id          String        @id @default(cuid())
   storeId     String
   customerId  String
-  saleId      String? // terisi bila ini pembayaran muka (DP) pada transaksi bon
   amount      Int
   method      PaymentMethod // CASH / QRIS / TRANSFER / OTHER (bukan CREDIT)
   note        String?
@@ -404,11 +445,11 @@ model CustomerPayment {
   createdAt   DateTime      @default(now())
   store       Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
   customer    Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  sale        Sale?         @relation(fields: [saleId], references: [id], onDelete: SetNull)
-
+  voidedById  String?
+  voidReason  String?
+  
   @@index([storeId, createdAt])
   @@index([customerId])
-  @@index([saleId])
 }
 
 model CashShift {
@@ -438,6 +479,8 @@ model CashMovement {
   type        CashMovementType
   amount      Int
   note        String
+  saleReturnId String? @unique // refund tunai tercatat sebagai OUT
+  saleReturn   SaleReturn? @relation(fields: [saleReturnId], references: [id], onDelete: SetNull)
   createdById String?
   createdAt   DateTime         @default(now())
   store       Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
@@ -487,4 +530,76 @@ model VariantPriceTier {
 
   @@unique([variantId, minQty])
   @@index([storeId])
+}
+
+enum RefundMethod {
+  CASH
+  QRIS
+  TRANSFER
+  OTHER
+  CREDIT_OFFSET
+}
+
+model SalePayment {
+  id        String        @id @default(cuid())
+  storeId   String
+  saleId    String
+  method    PaymentMethod
+  amount    Int // bagian dari total yang dilunasi lewat metode ini, TANPA kembalian
+  reference String? // no. referensi QRIS/transfer
+  createdAt DateTime      @default(now())
+  store     Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  sale      Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@index([storeId, method, createdAt])
+}
+
+model SaleReturn {
+  id           String           @id @default(cuid())
+  storeId      String
+  saleId       String
+  returnNo     Int // berurutan per toko, dari Store.returnCounter
+  customerId   String?
+  total        Int // nilai barang yang diretur
+  refundMethod RefundMethod
+  refundAmount Int              @default(0) // uang yang keluar
+  creditOffset Int              @default(0) // bagian yang memotong bon
+  reason       String?
+  createdById  String?
+  createdAt    DateTime         @default(now())
+  store        Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  sale         Sale             @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  customer     Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  items        SaleReturnItem[]
+  movements    StockMovement[]
+  cashMovement CashMovement?
+
+  @@unique([storeId, returnNo])
+  @@index([storeId, createdAt])
+  @@index([saleId])
+}
+
+model SaleReturnItem {
+  id         String         @id @default(cuid())
+  returnId   String
+  saleItemId String
+  variantId  String?
+  qty        Decimal        @db.Decimal(14, 3)
+  lineTotal  Int
+  costTotal  Int // untuk membalik HPP di laporan laba
+  restock    Boolean        @default(true) // false = rusak, stok tidak bertambah
+  reason     String?
+  return     SaleReturn     @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  saleItem   SaleItem       @relation(fields: [saleItemId], references: [id], onDelete: Restrict)
+
+  @@index([returnId])
+  @@index([saleItemId])
+}
+
+enum BusinessType {
+  RETAIL
+  FNB
+  SERVICE
+  OTHER
 }

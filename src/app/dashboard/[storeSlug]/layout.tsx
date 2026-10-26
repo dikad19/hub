@@ -9,6 +9,10 @@ import {
 import { requireStoreAccess } from "@/lib/tenant";
 import { SignOutButton } from "./sign-out-button";
 import { PageTitle, StoreSidebar } from "./store-sidebar";
+import { headers } from "next/headers";
+import { auth } from "@/lib/auth";
+import { HeaderActions } from "./header-actions";
+import { prisma } from "@/lib/prisma";
 
 type Params = Promise<{ storeSlug: string }>;
 export const instant = false;
@@ -52,25 +56,39 @@ async function Shell({
   params: Params;
 }) {
   const { storeSlug } = await params;
-  const { store, role } = await requireStoreAccess(storeSlug);
+
+  const { store, role, user } = await requireStoreAccess(storeSlug);
   const base = `/dashboard/${store.slug}`;
+  const memberships = await prisma.storeMember.findMany({
+    where: { userId: user.id },
+    orderBy: { createdAt: "asc" },
+    select: {
+      store: { select: { slug: true, name: true, businessType: true } },
+    },
+  });
+  const stores = memberships.map((m) => m.store);
+  const session = await auth.api.getSession({ headers: await headers() });
 
   return (
     <SidebarProvider>
       <StoreSidebar
         base={base}
-        storeName={store.name}
+        features={store.features}
+        stores={stores}
+        currentSlug={store.slug}
         role={role}
+        user={{ name: user?.name ?? "", email: user?.email ?? "" }}
         footer={<SignOutButton />}
       />
-      <SidebarInset>
+      <SidebarInset className="min-w-0">
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur print:hidden">
           <SidebarTrigger className="-ml-1" />
           <Separator
             orientation="vertical"
-            className="mr-2 data-[orientation=vertical]:h-4"
+            className="mx-1 mr-2 data-[orientation=vertical]:h-full"
           />
           <PageTitle base={base} role={role} />
+          <HeaderActions base={base} />
         </header>
         <main className="flex-1 p-4 md:p-6">{children}</main>
       </SidebarInset>
