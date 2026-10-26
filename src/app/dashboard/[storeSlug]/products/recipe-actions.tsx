@@ -52,7 +52,7 @@ export async function saveRecipe(
   });
   if (!menu) return { error: "Menu tidak ditemukan" };
   if (menu.stockMode !== "RECIPE") {
-    return { error: 'Ubah mode stok varian ini ke "Stok dari resep" dulu' };
+    return { error: 'Ubah jenis stok varian ini ke "Dengan resep" dulu' };
   }
 
   const valid = await prisma.productVariant.count({

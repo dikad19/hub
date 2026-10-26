@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { Fragment, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  ArrowLeft,
+  ArrowRight,
   Banknote,
   Check,
   Landmark,
@@ -100,7 +102,7 @@ export function PosClient({
   } | null>(null);
   const [key, setKey] = useState(newKey);
   const [cartOpen, setCartOpen] = useState(false); // hanya dipakai di mobile
-
+  const [step, setStep] = useState<1 | 2>(1);
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const qtyInCart = useMemo(
     () => new Map(lines.map((l) => [l.id, l.qty])),
@@ -124,6 +126,8 @@ export function PosClient({
     if (item.stock !== null && Number(item.stock) <= 0) return;
     setDone(null);
     setError(null);
+    setStep(1);
+
     setLines((ls) => {
       const ex = ls.find((l) => l.id === item.id);
       if (!ex) return [...ls, { id: item.id, qty: "1" }];
@@ -176,7 +180,9 @@ export function PosClient({
   const canPay =
     computed.length > 0 && !hasInvalid && !discountTooBig && paidNum >= total;
   const itemCount = computed.length;
-
+  // kalau keranjang kosong, selalu kembali ke langkah 1
+  const activeStep = itemCount === 0 ? 1 : step;
+  const canNext = itemCount > 0 && !hasInvalid;
   function setQty(id: string, qty: string) {
     setLines((ls) => ls.map((l) => (l.id === id ? { ...l, qty } : l)));
   }
@@ -192,6 +198,7 @@ export function PosClient({
     setDiscount("");
     setPaid("");
     setError(null);
+    setStep(1);
   }
 
   async function submit() {
@@ -354,15 +361,16 @@ export function PosClient({
             "max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-50 max-lg:flex max-lg:max-h-[92svh] max-lg:rounded-t-2xl",
         )}
       >
+        {/* ---------- Header ---------- */}
         <header className="flex shrink-0 items-center gap-2 px-4 pt-4 pb-3">
-          <h2 className="text-base font-semibold tracking-tight">Pesanan</h2>
+          <h2 className="text-base font-semibold tracking-tight">Keranjang</h2>
           {itemCount > 0 && (
             <Badge variant="secondary" className="rounded-full tabular-nums">
               {itemCount}
             </Badge>
           )}
           <div className="ml-auto flex items-center gap-1">
-            {itemCount > 0 && (
+            {itemCount > 0 && activeStep === 1 && (
               <Button
                 type="button"
                 variant="ghost"
@@ -386,245 +394,331 @@ export function PosClient({
           </div>
         </header>
 
-        {computed.length === 0 ? (
-          <div className="flex min-h-40 flex-1 flex-col items-center justify-center gap-3 px-4 py-10 text-center text-sm text-muted-foreground">
-            <span className="flex size-12 items-center justify-center rounded-full bg-muted">
-              <ShoppingBag className="size-5" />
-            </span>
-            Belum ada item. Pilih produk untuk mulai.
-          </div>
-        ) : (
-          <ul className="min-h-24 flex-1 space-y-2 overflow-y-auto px-4 pb-3">
-            {computed.map((c) => (
-              <li key={c.l.id} className="rounded-lg bg-muted/40 p-3 text-sm">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="leading-tight font-medium">{c.item.label}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {rp(c.item.price)} / {c.item.unit}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className="-mt-1 -mr-1 text-muted-foreground hover:text-destructive"
-                    aria-label="Hapus"
-                    onClick={() =>
-                      setLines((ls) => ls.filter((x) => x.id !== c.l.id))
-                    }
+        {/* ---------- Indikator langkah ---------- */}
+        <nav className="flex shrink-0 items-center gap-3 px-4 pb-3 text-xs">
+          {(
+            [
+              { n: 1, label: "Pesanan" },
+              { n: 2, label: "Pembayaran" },
+            ] as const
+          ).map(({ n, label }, idx) => {
+            const active = activeStep === n;
+            const reached = activeStep > n;
+            const disabled = n === 2 && !canNext;
+            return (
+              <Fragment key={n}>
+                {idx === 1 && (
+                  <span
+                    className={cn(
+                      "h-px flex-1 transition-colors",
+                      activeStep > 1 ? "bg-primary" : "bg-border",
+                    )}
+                  />
+                )}
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setStep(n)}
+                  className={cn(
+                    "flex shrink-0 items-center gap-1.5 font-medium transition-colors disabled:cursor-not-allowed",
+                    active ? "text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex size-5 items-center justify-center rounded-full text-[11px] tabular-nums",
+                      active || reached
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground",
+                    )}
                   >
-                    <Trash2 />
-                  </Button>
-                </div>
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon-sm"
-                      className="bg-background"
-                      aria-label="Kurangi"
-                      onClick={() => bump(c, -1)}
-                    >
-                      <Minus />
-                    </Button>
-                    <Input
-                      inputMode="decimal"
-                      value={c.l.qty}
-                      onChange={(e) => setQty(c.l.id, e.target.value)}
-                      className="h-8 w-14 bg-background px-1 text-center tabular-nums"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon-sm"
-                      className="bg-background"
-                      aria-label="Tambah"
-                      onClick={() => bump(c, 1)}
-                    >
-                      <Plus />
-                    </Button>
-                  </div>
-                  <p className="font-semibold tabular-nums">{rp(c.total)}</p>
-                </div>
-                {c.invalid && (
-                  <p className="mt-1.5 text-xs text-destructive">
-                    {c.item.allowDecimal
-                      ? "Jumlah tidak valid"
-                      : "Harus bilangan bulat"}
-                  </p>
-                )}
-                {!c.invalid && c.over && (
-                  <p className="mt-1.5 text-xs text-destructive">
-                    Melebihi stok ({numStr(c.item.stock!)})
-                  </p>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+                    {reached ? <Check className="size-3" /> : n}
+                  </span>
+                  {label}
+                </button>
+              </Fragment>
+            );
+          })}
+        </nav>
 
-        <div className="shrink-0 space-y-4 border-t bg-card p-4 text-sm max-lg:overflow-y-auto">
-          <div className="space-y-2">
-            <div className="flex justify-between text-muted-foreground">
-              <span>Subtotal</span>
-              <span className="tabular-nums">{rp(subtotal)}</span>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-muted-foreground">Diskon</span>
-              <div className="relative">
-                <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-xs text-muted-foreground">
-                  Rp
+        {/* ---------- Isi (scrollable) ---------- */}
+        <div className="min-h-0 flex-1 overflow-y-auto border-t">
+          {activeStep === 1 ? (
+            computed.length === 0 ? (
+              <div className="flex min-h-40 flex-col items-center justify-center gap-3 px-4 py-10 text-center text-sm text-muted-foreground">
+                <span className="flex size-12 items-center justify-center rounded-full bg-muted">
+                  <ShoppingBag className="size-5" />
                 </span>
+                Belum ada item. Pilih produk untuk mulai.
+              </div>
+            ) : (
+              <ul className="space-y-2 p-4">
+                {computed.map((c) => (
+                  <li
+                    key={c.l.id}
+                    className="rounded-lg bg-muted/40 p-3 text-sm"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="leading-tight font-medium">
+                          {c.item.label}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {rp(c.item.price)} / {c.item.unit}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="-mt-1 -mr-1 text-muted-foreground hover:text-destructive"
+                        aria-label="Hapus"
+                        onClick={() =>
+                          setLines((ls) => ls.filter((x) => x.id !== c.l.id))
+                        }
+                      >
+                        <Trash2 />
+                      </Button>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-sm"
+                          className="bg-background"
+                          aria-label="Kurangi"
+                          onClick={() => bump(c, -1)}
+                        >
+                          <Minus />
+                        </Button>
+                        <Input
+                          inputMode="decimal"
+                          value={c.l.qty}
+                          onChange={(e) => setQty(c.l.id, e.target.value)}
+                          className="h-8 w-14 bg-background px-1 text-center tabular-nums"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-sm"
+                          className="bg-background"
+                          aria-label="Tambah"
+                          onClick={() => bump(c, 1)}
+                        >
+                          <Plus />
+                        </Button>
+                      </div>
+                      <p className="font-semibold tabular-nums">
+                        {rp(c.total)}
+                      </p>
+                    </div>
+                    {c.invalid && (
+                      <p className="mt-1.5 text-xs text-destructive">
+                        {c.item.allowDecimal
+                          ? "Jumlah tidak valid"
+                          : "Harus bilangan bulat"}
+                      </p>
+                    )}
+                    {!c.invalid && c.over && (
+                      <p className="mt-1.5 text-xs text-destructive">
+                        Melebihi stok ({numStr(c.item.stock!)})
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : (
+            <div className="space-y-4 p-4 text-sm">
+              {/* Ringkasan + diskon */}
+              <div className="space-y-2">
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Subtotal ({itemCount} item)</span>
+                  <span className="tabular-nums">{rp(subtotal)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground">Diskon</span>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-xs text-muted-foreground">
+                      Rp
+                    </span>
+                    <Input
+                      inputMode="numeric"
+                      value={grouped(digits(discount))}
+                      onChange={(e) => setDiscount(digits(e.target.value))}
+                      placeholder="0"
+                      className="h-8 w-32 pl-8 text-right tabular-nums"
+                    />
+                  </div>
+                </div>
+                {discountTooBig && (
+                  <p className="text-xs text-destructive">
+                    Diskon melebihi subtotal
+                  </p>
+                )}
+              </div>
+
+              {/* Metode bayar */}
+              <div
+                className="grid gap-1 rounded-lg bg-muted p-1"
+                style={{
+                  gridTemplateColumns: `repeat(${METHODS.length}, 1fr)`,
+                }}
+              >
+                {METHODS.map((m) => {
+                  const Icon = METHOD_ICON[m] ?? Wallet;
+                  const active = method === m;
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setMethod(m)}
+                      aria-pressed={active}
+                      className={cn(
+                        "flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition",
+                        active
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      <Icon className="size-3.5" />
+                      {METHOD_LABEL[m]}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {method === "CASH" ? (
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground">Uang diterima</span>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-xs text-muted-foreground">
+                        Rp
+                      </span>
+                      <Input
+                        inputMode="numeric"
+                        value={grouped(digits(paid))}
+                        onChange={(e) => setPaid(digits(e.target.value))}
+                        placeholder="0"
+                        className="h-10 w-40 pl-8 text-right text-base font-medium tabular-nums"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={total === 0}
+                      onClick={() => setPaid(String(total))}
+                    >
+                      Uang pas
+                    </Button>
+                    {cashSuggestions(total).map((n) => (
+                      <Button
+                        key={n}
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setPaid(String(n))}
+                      >
+                        {n.toLocaleString("id-ID")}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg bg-muted/60 px-3 py-2.5">
+                    <span className="text-muted-foreground">Kembalian</span>
+                    {paid === "" ? (
+                      <span className="text-xs text-muted-foreground">
+                        Masukkan uang diterima
+                      </span>
+                    ) : (
+                      <span
+                        className={cn(
+                          "text-base font-semibold tabular-nums",
+                          change < 0
+                            ? "text-destructive"
+                            : "text-emerald-600 dark:text-emerald-400",
+                        )}
+                      >
+                        {change < 0 ? `Kurang ${rp(-change)}` : rp(change)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <p className="rounded-lg bg-muted/60 px-3 py-2.5 text-muted-foreground">
+                  Terima {rp(total)} via {METHOD_LABEL[method]}.
+                </p>
+              )}
+
+              {/* Pelanggan & catatan */}
+              <div className="space-y-2">
                 <Input
-                  inputMode="numeric"
-                  value={grouped(digits(discount))}
-                  onChange={(e) => setDiscount(digits(e.target.value))}
-                  placeholder="0"
-                  className="h-8 w-32 pl-8 text-right tabular-nums"
+                  placeholder="Nama pelanggan (opsional)"
+                  value={customer}
+                  onChange={(e) => setCustomer(e.target.value)}
+                />
+                <Input
+                  placeholder="Catatan (opsional)"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
                 />
               </div>
             </div>
-            {discountTooBig && (
-              <p className="text-xs text-destructive">
-                Diskon melebihi subtotal
-              </p>
-            )}
-            <div className="flex items-baseline justify-between pt-1">
-              <span className="font-medium">Total</span>
-              <span className="text-3xl font-semibold tracking-tight tabular-nums">
-                {rp(total)}
-              </span>
-            </div>
-          </div>
-
-          {/* Metode bayar: segmented control */}
-          <div
-            className="grid gap-1 rounded-lg bg-muted p-1"
-            style={{ gridTemplateColumns: `repeat(${METHODS.length}, 1fr)` }}
-          >
-            {METHODS.map((m) => {
-              const Icon = METHOD_ICON[m] ?? Wallet;
-              const active = method === m;
-              return (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setMethod(m)}
-                  aria-pressed={active}
-                  className={cn(
-                    "flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition",
-                    active
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  <Icon className="size-3.5" />
-                  {METHOD_LABEL[m]}
-                </button>
-              );
-            })}
-          </div>
-
-          {method === "CASH" ? (
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-muted-foreground">Uang diterima</span>
-                <div className="relative">
-                  <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-xs text-muted-foreground">
-                    Rp
-                  </span>
-                  <Input
-                    inputMode="numeric"
-                    value={grouped(digits(paid))}
-                    onChange={(e) => setPaid(digits(e.target.value))}
-                    placeholder="0"
-                    className="h-10 w-40 pl-8 text-right text-base font-medium tabular-nums"
-                  />
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  disabled={total === 0}
-                  onClick={() => setPaid(String(total))}
-                >
-                  Uang pas
-                </Button>
-                {cashSuggestions(total).map((n) => (
-                  <Button
-                    key={n}
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => setPaid(String(n))}
-                  >
-                    {n.toLocaleString("id-ID")}
-                  </Button>
-                ))}
-              </div>
-              <div className="flex items-center justify-between rounded-lg bg-muted/60 px-3 py-2.5">
-                <span className="text-muted-foreground">Kembalian</span>
-                {paid === "" ? (
-                  <span className="text-xs text-muted-foreground">
-                    Masukkan uang diterima
-                  </span>
-                ) : (
-                  <span
-                    className={cn(
-                      "text-base font-semibold tabular-nums",
-                      change < 0
-                        ? "text-destructive"
-                        : "text-emerald-600 dark:text-emerald-400",
-                    )}
-                  >
-                    {change < 0 ? `Kurang ${rp(-change)}` : rp(change)}
-                  </span>
-                )}
-              </div>
-            </div>
-          ) : (
-            <p className="rounded-lg bg-muted/60 px-3 py-2.5 text-muted-foreground">
-              Terima {rp(total)} via {METHOD_LABEL[method]}.
-            </p>
           )}
+        </div>
 
-          <details className="group rounded-lg bg-muted/40 px-3 py-2">
-            <summary className="cursor-pointer text-muted-foreground select-none">
-              Pelanggan & catatan
-            </summary>
-            <div className="mt-2 space-y-2">
-              <Input
-                placeholder="Nama pelanggan (opsional)"
-                value={customer}
-                onChange={(e) => setCustomer(e.target.value)}
-                className="bg-background"
-              />
-              <Input
-                placeholder="Catatan (opsional)"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                className="bg-background"
-              />
-            </div>
-          </details>
+        {/* ---------- Footer (selalu terlihat) ---------- */}
+        <div className="shrink-0 space-y-3 border-t bg-card p-4">
+          <div className="flex items-baseline justify-between">
+            <span className="font-medium">Total</span>
+            <span className="text-2xl font-semibold tracking-tight tabular-nums">
+              {rp(activeStep === 1 ? subtotal : total)}
+            </span>
+          </div>
 
-          {error && (
+          {error && activeStep === 2 && (
             <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {error}
             </p>
           )}
-          <Button
-            className="h-12 w-full rounded-lg text-base font-semibold"
-            size="lg"
-            disabled={!canPay || pending}
-            onClick={submit}
-          >
-            {pending ? "Memproses..." : `Bayar ${rp(total)}`}
-          </Button>
+
+          {activeStep === 1 ? (
+            <Button
+              className="h-10 w-full rounded-md text-sm font-semibold"
+              size="lg"
+              disabled={!canNext}
+              onClick={() => setStep(2)}
+            >
+              Lanjut ke pembayaran
+              <ArrowRight />
+            </Button>
+          ) : (
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="h-12 rounded-lg"
+                disabled={pending}
+                onClick={() => setStep(1)}
+                aria-label="Kembali ke pesanan"
+              >
+                <ArrowLeft />
+              </Button>
+              <Button
+                className="h-12 flex-1 rounded-lg text-base font-semibold"
+                size="lg"
+                disabled={!canPay || pending}
+                onClick={submit}
+              >
+                {pending ? "Memproses..." : `Bayar ${rp(total)}`}
+              </Button>
+            </div>
+          )}
         </div>
       </section>
 

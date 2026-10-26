@@ -40,7 +40,7 @@ type Props = {
 };
 
 const defaultMode = (t: BusinessType): StockModeValue =>
-  t === "FNB" ? "RECIPE" : t === "SERVICE" ? "NONE" : "DIRECT";
+  t === "SERVICE" ? "NONE" : "DIRECT";
 
 const emptyVariant = (
   name = "",
@@ -162,19 +162,26 @@ export function ProductForm({
         ? "Simpan perubahan dulu untuk mengatur resep."
         : changed && v.stockMode === "DIRECT"
           ? "Simpan perubahan dulu untuk mengatur stok."
-          : "";
+          : !changed && v.stockMode === "NONE"
+            ? 'Varian ini "Tanpa stok". Ubah jenis stok ke "Stok langsung" lalu simpan untuk mengatur stok.'
+            : !changed && v.stockMode === "RECIPE"
+              ? "Stok menu ini dihitung dari bahan di resep. Atur stok pada produk bahannya."
+              : "";
     return { tabs, pendingLabel };
   };
 
   const patch = (i: number, p: Partial<VariantInput>) =>
     setVariants((vs) => vs.map((v, idx) => (idx === i ? { ...v, ...p } : v)));
 
+  const hasNone =
+    businessType === "SERVICE" || [...initialModes.values()].includes("NONE");
+
   const modes: { value: StockModeValue; label: string }[] = [
-    { value: "DIRECT", label: "Stok langsung" },
+    { value: "DIRECT", label: "Tanpa resep (stok biasa)" },
     ...(features.includes("recipes")
       ? [{ value: "RECIPE" as const, label: "Dengan resep" }]
       : []),
-    { value: "NONE", label: "Tanpa stok" },
+    ...(hasNone ? [{ value: "NONE" as const, label: "Tanpa stok" }] : []),
   ];
 
   const mVariant = variants.find((v) => v.id === modal?.id);
@@ -251,7 +258,7 @@ export function ProductForm({
           {variants.map((v, i) => {
             const isRecipe = v.stockMode === "RECIPE";
             const { tabs, pendingLabel } = tabsOf(v);
-
+            const stockTab = tabs.find((t) => t.id === "stock");
             return (
               <Card
                 key={v.id ?? `new-${i}`}
@@ -375,6 +382,26 @@ export function ProductForm({
                               }
                             />
                           </Field>
+                        )}
+                        {stockTab && (
+                          <div className="space-y-1.5 text-sm">
+                            <span className="font-medium">Stok saat ini</span>
+                            <div className="flex h-9 items-center gap-2">
+                              <span className="font-semibold tabular-nums">
+                                {stockTab.summary}
+                              </span>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  setModal({ id: v.id!, tab: "stock" })
+                                }
+                              >
+                                Atur stok
+                              </Button>
+                            </div>
+                          </div>
                         )}
                         <Field label="Stok minimum">
                           <Input

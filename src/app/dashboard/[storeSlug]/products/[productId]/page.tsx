@@ -81,6 +81,7 @@ async function EditProduct({ params }: { params: Params }) {
       tabs.push({
         id: "stock",
         label: "Stok",
+        summary: `${num(v.stockQty)} ${v.unit}`,
         content: (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
