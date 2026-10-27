@@ -216,7 +216,7 @@ export function PosClient({
       });
       if (!res.ok) {
         setError(res.error);
-        setKey(newKey()); // server menolak, tidak ada transaksi tercatat
+        setKey(newKey());
         return;
       }
       setDone({ saleId: res.saleId, receiptNo: res.receiptNo });
@@ -228,10 +228,9 @@ export function PosClient({
       setMethod("CASH");
       setKey(newKey());
       setCartOpen(false);
-      router.refresh(); // muat ulang stok
+      router.refresh();
       searchRef.current?.focus();
     } catch {
-      // key sengaja TIDAK diganti: menekan Bayar lagi aman (tidak akan dobel)
       setError(
         "Koneksi bermasalah. Tekan Bayar lagi (aman, tidak akan tercatat dobel).",
       );
@@ -242,7 +241,6 @@ export function PosClient({
 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_400px] xl:grid-cols-[minmax(0,1fr)_420px]">
-      {/* ---------------- Kiri: katalog ---------------- */}
       <div className="min-w-0 space-y-4 pb-24 lg:pb-0">
         {done && (
           <div className="flex items-center gap-3 rounded-lg bg-emerald-500/10 px-3 py-2.5 text-sm text-emerald-700 ring-1 ring-emerald-500/20 dark:text-emerald-300">
@@ -355,13 +353,12 @@ export function PosClient({
 
       <section
         className={cn(
-          "hidden min-h-0 flex-col overflow-hidden bg-card lg:flex lg:rounded-lg lg:shadow-sm lg:ring-1 lg:ring-foreground/8",
+          "hidden min-h-0 flex-col overflow-hidden bg-card lg:flex lg:rounded-lg lg:ring-1 lg:ring-foreground/10",
           "lg:sticky lg:top-[4.5rem] lg:max-h-[calc(100svh-6rem)]",
           cartOpen &&
             "max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-50 max-lg:flex max-lg:max-h-[92svh] max-lg:rounded-t-2xl",
         )}
       >
-        {/* ---------- Header ---------- */}
         <header className="flex shrink-0 items-center gap-2 px-4 pt-4 pb-3">
           <h2 className="text-base font-semibold tracking-tight">Keranjang</h2>
           {itemCount > 0 && (

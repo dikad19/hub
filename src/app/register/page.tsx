@@ -3,11 +3,18 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  AuthShell,
+  FormError,
+  PasswordInput,
+  inputClass,
+  submitClass,
+} from "@/components/auth-shell";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -32,44 +39,60 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm items-center p-4">
-      <Card className="w-full">
-        <CardHeader>
-          <CardTitle>Daftar</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={onSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Nama</Label>
-              <Input id="name" name="name" required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" name="email" type="email" required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                minLength={8}
-                required
-              />
-            </div>
-            {error && <p className="text-sm text-red-600">{error}</p>}
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Memproses..." : "Daftar"}
-            </Button>
-            <p className="text-center text-sm">
-              Sudah punya akun?{" "}
-              <Link href="/login" className="underline">
-                Masuk
-              </Link>
-            </p>
-          </form>
-        </CardContent>
-      </Card>
-    </main>
+    <AuthShell
+      title="Buat akun Hub"
+      description="Daftar, lalu buat toko pertama Anda."
+      footer={
+        <>
+          Sudah punya akun?{" "}
+          <Link
+            href="/login"
+            className="font-semibold text-(--teal) underline underline-offset-4"
+          >
+            Masuk
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={onSubmit} className="space-y-5">
+        <div className="space-y-2">
+          <Label htmlFor="name">Nama</Label>
+          <Input
+            id="name"
+            name="name"
+            autoComplete="name"
+            required
+            className={inputClass}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+            className={inputClass}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="password">Password</Label>
+          <PasswordInput
+            id="password"
+            name="password"
+            autoComplete="new-password"
+            minLength={8}
+            required
+          />
+          <p className="text-xs text-(--ink)/60">Minimal 8 karakter.</p>
+        </div>
+        <FormError message={error} />
+        <Button type="submit" className={submitClass} disabled={loading}>
+          {loading && <Loader2 className="mr-2 size-4 animate-spin" />}
+          {loading ? "Memproses..." : "Daftar"}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }

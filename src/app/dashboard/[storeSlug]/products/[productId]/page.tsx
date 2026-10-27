@@ -41,6 +41,9 @@ async function EditProduct({ params }: { params: Params }) {
   const { store, role } = await requireStoreAccess(storeSlug);
   if (role !== "OWNER") redirect(`/dashboard/${storeSlug}/products`);
 
+  // Jenis stok (langsung / resep) dan resep hanya relevan untuk kafe & resto.
+  const isFnb = store.businessType === "FNB";
+
   const [product, ingredientRows] = await Promise.all([
     prisma.product.findFirst({
       where: { id: productId, storeId: store.id },
@@ -55,11 +58,14 @@ async function EditProduct({ params }: { params: Params }) {
         },
       },
     }),
-    prisma.productVariant.findMany({
-      where: { storeId: store.id, isActive: true, stockMode: "DIRECT" },
-      include: { product: { select: { name: true } } },
-      orderBy: [{ product: { name: "asc" } }, { name: "asc" }],
-    }),
+    // Daftar bahan hanya dibutuhkan untuk tab Resep
+    isFnb
+      ? prisma.productVariant.findMany({
+          where: { storeId: store.id, isActive: true, stockMode: "DIRECT" },
+          include: { product: { select: { name: true } } },
+          orderBy: [{ product: { name: "asc" } }, { name: "asc" }],
+        })
+      : Promise.resolve([]),
   ]);
 
   if (!product) notFound();
@@ -77,31 +83,29 @@ async function EditProduct({ params }: { params: Params }) {
   for (const v of product.variants) {
     const tabs: VariantExtras[string] = [];
 
-    {
-      tabs.push({
-        id: "stock",
-        label: "Stok",
-        summary: `${num(v.stockQty)} ${v.unit}`,
-        content: (
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Stok saat ini{" "}
-              <span className="font-medium text-foreground">
-                {num(v.stockQty)} {v.unit}
-              </span>
-              . Stok hanya bisa diubah lewat penyesuaian, supaya tercatat di
-              riwayat.
-            </p>
-            <AdjustStockForm
-              action={adjustStock.bind(null, storeSlug, v.id)}
-              unit={v.unit}
-            />
-          </div>
-        ),
-      });
-    }
+    tabs.push({
+      id: "stock",
+      label: "Stok",
+      summary: `${num(v.stockQty)} ${v.unit}`,
+      content: (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Stok saat ini{" "}
+            <span className="font-medium text-foreground">
+              {num(v.stockQty)} {v.unit}
+            </span>
+            . Stok hanya bisa diubah lewat penyesuaian, supaya tercatat di
+            riwayat.
+          </p>
+          <AdjustStockForm
+            action={adjustStock.bind(null, storeSlug, v.id)}
+            unit={v.unit}
+          />
+        </div>
+      ),
+    });
 
-    {
+    if (isFnb) {
       tabs.push({
         id: "recipe",
         label: "Resep",
