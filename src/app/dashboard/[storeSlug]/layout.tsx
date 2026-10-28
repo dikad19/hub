@@ -7,7 +7,6 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { requireStoreAccess } from "@/lib/tenant";
-import { SignOutButton } from "./sign-out-button";
 import { PageTitle, StoreSidebar } from "./store-sidebar";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
@@ -78,7 +77,6 @@ async function Shell({
         currentSlug={store.slug}
         role={role}
         user={{ name: user?.name ?? "", email: user?.email ?? "" }}
-        footer={<SignOutButton />}
       />
       <SidebarInset className="min-w-0">
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur print:hidden">

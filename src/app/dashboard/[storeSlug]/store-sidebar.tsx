@@ -50,6 +50,7 @@ type NavItem = {
 };
 type NavGroup = { label: string; items: NavItem[] };
 
+// features kosong/undefined = tanpa penyaringan (dipakai PageTitle supaya judul selalu ada)
 function getGroups(
   base: string,
   role: string,
