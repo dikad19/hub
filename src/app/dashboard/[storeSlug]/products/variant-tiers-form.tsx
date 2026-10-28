@@ -49,7 +49,7 @@ export function VariantTiersForm({
           {sorted.map((t) => (
             <li
               key={t.id}
-              className="flex items-center gap-1 rounded-md border px-2 py-1 text-sm"
+              className="flex items-center gap-1 rounded-sm border border-(--line) bg-(--paper) px-2 py-1 text-sm"
             >
               ≥ {Number(t.minQty)} {unit} → {rupiah(t.price)} / {unit}
               <button

@@ -9,6 +9,11 @@ import { METHOD_LABEL } from "@/lib/pos";
 import { Skeleton } from "@/components/ui/skeleton";
 import { voidSale } from "../actions";
 import { ReceiptActions } from "./receipt-actions";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Hub | Sale Details",
+};
 
 type Params = Promise<{ storeSlug: string; saleId: string }>;
 

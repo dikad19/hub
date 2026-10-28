@@ -4,6 +4,7 @@ import { requireStoreAccess } from "@/lib/tenant";
 import { variantLabel, type PosItem } from "@/lib/pos";
 import { PosClient } from "./pos-client";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Metadata } from "next";
 
 type Params = Promise<{ storeSlug: string }>;
 
@@ -14,6 +15,10 @@ export default function PosPage({ params }: { params: Params }) {
     </Suspense>
   );
 }
+
+export const metadata: Metadata = {
+  title: "Hub | Point of sale",
+};
 
 async function Pos({ params }: { params: Params }) {
   const { storeSlug } = await params;

@@ -38,7 +38,7 @@ type Props = {
   features: string[];
   extras?: VariantExtras;
 };
-
+const display = "font-[family-name:var(--font-display)]";
 const defaultMode = (t: BusinessType): StockModeValue =>
   t === "SERVICE" ? "NONE" : "DIRECT";
 
@@ -67,7 +67,18 @@ const TAB_ICON = {
   tiers: Tags,
 } as const;
 
-const sectionTitle = "text-xs font-medium text-muted-foreground";
+const sectionTitle =
+  "text-xs font-semibold uppercase tracking-wide text-(--ink)/55";
+const cardClass =
+  "rounded-lg border border-(--line) bg-white shadow-none ring-0";
+const segWrap = "grid gap-1 rounded-sm bg-(--ink)/5 p-1";
+const segBtn = (on: boolean) =>
+  cn(
+    "rounded-sm px-2 py-1.5 text-xs font-medium transition",
+    on
+      ? "bg-white text-(--ink) shadow-sm"
+      : "text-(--ink)/60 hover:text-(--ink)",
+  );
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -81,7 +92,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function Rp({ children }: { children: ReactNode }) {
   return (
     <div className="relative">
-      <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted-foreground">
+      <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-(--ink)/55">
         Rp
       </span>
       {children}
@@ -110,7 +121,7 @@ function Check({
         checked={checked}
         defaultChecked={defaultChecked}
         onChange={(e) => onChange?.(e.target.checked)}
-        className="size-4 rounded accent-primary"
+        className="size-4 rounded accent-(--teal)"
       />
       {children}
     </label>
@@ -190,7 +201,7 @@ export function ProductForm({
 
   return (
     <>
-      <form action={formAction} className="space-y-5 pb-24">
+      <form action={formAction} className="space-y-5 pb-4">
         <input type="hidden" name="variants" value={JSON.stringify(variants)} />
 
         <datalist id="units">
@@ -210,7 +221,7 @@ export function ProductForm({
           ))}
         </datalist>
 
-        <Card className="gap-4 py-5">
+        <Card className={cn(cardClass, "gap-4 py-5")}>
           <CardContent className="space-y-4 px-5">
             <div className="max-w-xl">
               <Field label="Nama produk">
@@ -234,8 +245,8 @@ export function ProductForm({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="font-semibold tracking-tight">Varian</h2>
-              <p className="text-sm text-muted-foreground">
+              <h2 className={`${display} text-lg font-semibold`}>Varian</h2>
+              <p className="text-sm text-(--ink)/70">
                 Tiap varian punya harga, stok, dan pengaturan sendiri.
               </p>
             </div>
@@ -243,6 +254,7 @@ export function ProductForm({
               type="button"
               variant="outline"
               size="sm"
+              className="rounded-sm border-(--line)"
               onClick={() =>
                 setVariants((vs) => [
                   ...vs,
@@ -262,10 +274,10 @@ export function ProductForm({
             return (
               <Card
                 key={v.id ?? `new-${i}`}
-                className="gap-0 overflow-hidden py-0"
+                className={cn(cardClass, "gap-0 overflow-hidden py-0")}
               >
-                <div className="flex items-center gap-2 border-b px-5 py-3">
-                  <Badge variant="secondary" className="rounded-full">
+                <div className="flex items-center gap-2 border-b border-(--line) bg-(--paper)/60 px-5 py-3">
+                  <Badge className="rounded-full bg-(--mint) text-(--teal) hover:bg-(--mint)">
                     {i + 1}
                   </Badge>
                   <span className="truncate text-sm font-medium">
@@ -288,43 +300,40 @@ export function ProductForm({
                 </div>
 
                 <div className="space-y-5 p-5">
-                  <div className="space-y-2">
-                    <p className={sectionTitle}>Jenis stok</p>
-                    <div
-                      className="grid gap-1 rounded-lg bg-muted p-1 sm:max-w-md"
-                      style={{
-                        gridTemplateColumns: `repeat(${modes.length}, 1fr)`,
-                      }}
-                    >
-                      {modes.map((m) => (
-                        <button
-                          key={m.value}
-                          type="button"
-                          aria-pressed={v.stockMode === m.value}
-                          onClick={() =>
-                            patch(i, {
-                              stockMode: m.value,
-                              ...(m.value === "RECIPE" && v.unit === "pcs"
-                                ? { unit: "porsi" }
-                                : {}),
-                            })
-                          }
-                          className={cn(
-                            "rounded-md px-2 py-1.5 text-xs font-medium transition",
-                            v.stockMode === m.value
-                              ? "bg-background text-foreground shadow-sm"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          {m.label}
-                        </button>
-                      ))}
+                  {modes.length > 1 && (
+                    <div className="space-y-2">
+                      <p className={sectionTitle}>Jenis stok</p>
+                      <div
+                        className={cn(segWrap, "sm:max-w-md")}
+                        style={{
+                          gridTemplateColumns: `repeat(${modes.length}, 1fr)`,
+                        }}
+                      >
+                        {modes.map((m) => (
+                          <button
+                            key={m.value}
+                            type="button"
+                            aria-pressed={v.stockMode === m.value}
+                            onClick={() =>
+                              patch(i, {
+                                stockMode: m.value,
+                                ...(m.value === "RECIPE" && v.unit === "pcs"
+                                  ? { unit: "porsi" }
+                                  : {}),
+                              })
+                            }
+                            className={segBtn(v.stockMode === m.value)}
+                          >
+                            {m.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div className="space-y-3">
                     <p className={sectionTitle}>Harga</p>
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
                       <Field label="Nama varian">
                         <Input
                           value={v.name}
@@ -370,7 +379,7 @@ export function ProductForm({
                   {v.stockMode === "DIRECT" && (
                     <div className="space-y-3">
                       <p className={sectionTitle}>Stok</p>
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="grid gap-3 sm:grid-cols-3">
                         {!v.id && (
                           <Field label="Stok awal">
                             <Input
@@ -437,7 +446,7 @@ export function ProductForm({
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 border-t pt-4">
+                  <div className="flex flex-wrap items-center gap-2 border-t border-(--line) pt-4">
                     {tabs.map((t) => {
                       const Icon = TAB_ICON[t.id];
                       return (
@@ -511,20 +520,29 @@ export function ProductForm({
           })}
         </div>
 
-        <div className="sticky bottom-0 z-10 -mx-4 flex items-center gap-3 border-t bg-background/90 px-4 py-3 backdrop-blur md:-mx-6 md:px-6">
+        <div className="sticky bottom-4 z-10 flex items-center gap-3 rounded-lg border border-(--line) bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
           {state.error ? (
-            <p className="min-w-0 flex-1 truncate text-sm text-destructive">
+            <p className="min-w-0 flex-1 truncate text-sm text-red-700">
               {state.error}
             </p>
           ) : (
-            <p className="flex-1 text-sm text-muted-foreground">
+            <p className="flex-1 text-sm text-(--ink)/60">
               {variants.length} varian
             </p>
           )}
-          <Button type="button" variant="ghost" onClick={() => router.back()}>
+          <Button
+            type="button"
+            variant="ghost"
+            className="rounded-sm"
+            onClick={() => router.back()}
+          >
             Batal
           </Button>
-          <Button type="submit" disabled={pending}>
+          <Button
+            type="submit"
+            disabled={pending}
+            className="rounded-sm bg-(--teal) text-white hover:bg-(--ink)"
+          >
             {pending ? "Menyimpan..." : submitLabel}
           </Button>
         </div>
@@ -549,7 +567,7 @@ export function ProductForm({
 
           {mTabs.length > 1 && (
             <div
-              className="grid gap-1 rounded-lg bg-muted p-1"
+              className={segWrap}
               style={{ gridTemplateColumns: `repeat(${mTabs.length}, 1fr)` }}
             >
               {mTabs.map((t) => (
@@ -558,12 +576,7 @@ export function ProductForm({
                   type="button"
                   aria-pressed={mActive?.id === t.id}
                   onClick={() => modal && setModal({ id: modal.id, tab: t.id })}
-                  className={cn(
-                    "rounded-md px-2 py-1.5 text-xs font-medium transition",
-                    mActive?.id === t.id
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
+                  className={segBtn(mActive?.id === t.id)}
                 >
                   {t.label}
                 </button>

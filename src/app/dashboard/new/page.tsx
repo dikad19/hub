@@ -2,10 +2,17 @@ import { Suspense } from "react";
 import { requireSession } from "@/lib/session";
 import { NewStoreForm } from "./new-store-form";
 import { prisma } from "@/lib/prisma";
+import { Loader2 } from "lucide-react";
 
 export default function NewStorePage() {
   return (
-    <Suspense fallback={<p className="p-6">Memuat...</p>}>
+    <Suspense
+      fallback={
+        <div className="grid min-h-screen place-items-center">
+          <Loader2 className="size-6 animate-spin text-[#0B6E5F]" />
+        </div>
+      }
+    >
       <Guard />
     </Suspense>
   );

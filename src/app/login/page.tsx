@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,22 +33,23 @@ export default function LoginPage() {
     });
 
     setLoading(false);
-    if (error) return setError(error.message ?? "Gagal masuk");
+    if (error)
+      return setError(error.message ?? "Couldn't sign in. Please try again.");
     router.push("/dashboard");
   }
 
   return (
     <AuthShell
-      title="Masuk ke Hub"
-      description="Lanjutkan mengelola toko Anda."
+      title="Welcome back"
+      description="Log in to keep running your shop."
       footer={
         <>
-          Belum punya akun?{" "}
+          New to Hub?{" "}
           <Link
             href="/register"
             className="font-semibold text-(--teal) underline underline-offset-4"
           >
-            Daftar
+            Create an account
           </Link>
         </>
       }

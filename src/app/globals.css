@@ -49,6 +49,12 @@
 }
 
 :root {
+  --ink: #10222b;
+  --paper: #f4f6f5;
+  --teal: #0b6e5f;
+  --mint: #d6efe6;
+  --sun: #ffc83d;
+  --line: #d3dbd8;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -126,5 +132,76 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes line-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes receipt-out {
+  to {
+    opacity: 0;
+    transform: translateY(24px) rotate(2deg);
+  }
+}
+
+@keyframes scan {
+  from {
+    top: 0;
+  }
+  to {
+    top: 100%;
+  }
+}
+
+.scan-line {
+  position: absolute;
+  left: -6px;
+  right: -6px;
+  top: 50%;
+  height: 2px;
+  background: var(--sun);
+  box-shadow: 0 0 8px var(--sun);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rise {
+    animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+  }
+  .line-in {
+    animation: line-in 0.35s ease-out backwards;
+  }
+  .receipt-out {
+    animation: receipt-out 0.45s ease-in forwards;
+  }
+  .scan-line {
+    animation: scan 2s ease-in-out infinite alternate;
+  }
+
+  @supports (animation-timeline: view()) {
+    .reveal {
+      animation: rise linear backwards;
+      animation-timeline: view();
+      animation-range: entry 0% entry 35%;
+    }
   }
 }

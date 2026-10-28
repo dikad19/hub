@@ -8,7 +8,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { setProductActive } from "./actions";
+import { Metadata } from "next";
 
+export const metadata: Metadata = {
+  title: "Hub | Products",
+};
 type Params = Promise<{ storeSlug: string }>;
 
 const rp = (n: number) => "Rp" + n.toLocaleString("id-ID");
@@ -21,7 +25,7 @@ const initials = (s: string) =>
     .slice(0, 2)
     .map((p) => p[0]?.toUpperCase())
     .join("") || "?";
-
+const display = "font-[family-name:var(--font-display)]";
 export default function ProductsPage({ params }: { params: Params }) {
   return (
     <Suspense
@@ -99,28 +103,30 @@ async function ProductList({ params }: { params: Params }) {
     ).length;
 
   const toneDot: Record<Tone, string> = {
-    ok: "bg-emerald-500",
+    ok: "bg-(--teal)",
     warn: "bg-amber-500",
-    bad: "bg-destructive",
-    muted: "bg-muted-foreground/40",
+    bad: "bg-red-600",
+    muted: "bg-(--ink)/30",
   };
   const toneText: Record<Tone, string> = {
-    ok: "text-foreground",
-    warn: "text-amber-700 dark:text-amber-400",
-    bad: "text-destructive",
-    muted: "text-muted-foreground",
+    ok: "text-(--ink)",
+    warn: "text-amber-700",
+    bad: "text-red-700",
+    muted: "text-(--ink)/55",
   };
 
   return (
     <div className="space-y-5">
-      {/* ---------- Header ---------- */}
+      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Produk</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className={`${display} text-2xl font-bold tracking-tight`}>
+            Produk
+          </h1>
+          <p className="text-sm text-(--ink)/70">
             {products.length} produk
             {attention > 0 && (
-              <span className="text-amber-700 dark:text-amber-400">
+              <span className="text-amber-700">
                 , {attention} varian perlu dicek stoknya
               </span>
             )}
@@ -129,7 +135,7 @@ async function ProductList({ params }: { params: Params }) {
         {isOwner && (
           <Link
             href={`/dashboard/${storeSlug}/products/new`}
-            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className="inline-flex h-9 items-center gap-1.5 rounded-sm bg-(--teal) px-3.5 text-sm font-medium text-white transition-colors hover:bg-(--ink)"
           >
             <Plus className="size-4" />
             Tambah produk
@@ -137,15 +143,15 @@ async function ProductList({ params }: { params: Params }) {
         )}
       </div>
 
-      {/* ---------- Kosong ---------- */}
+      {/* Kosong */}
       {products.length === 0 && (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-16 text-center">
-          <span className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-(--ink)/25 bg-white py-16 text-center">
+          <span className="grid size-12 place-items-center rounded-full bg-(--mint) text-(--teal)">
             <Package className="size-5" />
           </span>
           <div className="space-y-1">
             <p className="font-medium">Belum ada produk</p>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-(--ink)/70">
               {isOwner
                 ? "Tambahkan produk pertama supaya bisa dijual di kasir."
                 : "Pemilik toko belum menambahkan produk."}
@@ -154,21 +160,21 @@ async function ProductList({ params }: { params: Params }) {
         </div>
       )}
 
-      {/* ---------- Daftar ---------- */}
-      <ul className="space-y-3">
+      {/* Daftar */}
+      <ul className="grid items-start gap-4 xl:grid-cols-2 2xl:grid-cols-3">
         {products.map((p) => (
           <li
             key={p.id}
             className={cn(
-              "overflow-hidden rounded-lg bg-card ring-1 ring-foreground/8",
-              !p.isActive && "bg-muted/30",
+              "overflow-hidden rounded-lg border border-(--line)",
+              p.isActive ? "bg-white" : "bg-(--ink)/[0.03]",
             )}
           >
-            <div className="flex items-center gap-3 border-b px-4 py-3">
+            <div className="flex items-center gap-3 border-b border-(--line) px-4 py-3">
               <span
                 className={cn(
-                  "flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground",
-                  !p.isActive && "opacity-60",
+                  "flex size-9 shrink-0 items-center justify-center rounded-md bg-(--mint) text-xs font-semibold text-(--teal)",
+                  !p.isActive && "bg-(--ink)/10 text-(--ink)/50",
                 )}
               >
                 {initials(p.name)}
@@ -179,14 +185,14 @@ async function ProductList({ params }: { params: Params }) {
                   <p
                     className={cn(
                       "truncate font-medium",
-                      !p.isActive && "text-muted-foreground",
+                      !p.isActive && "text-(--ink)/50",
                     )}
                   >
                     {p.name}
                   </p>
                   {!p.isActive && <Badge variant="outline">Diarsipkan</Badge>}
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-(--ink)/60">
                   {p.variants.length} varian
                 </p>
               </div>
@@ -195,7 +201,7 @@ async function ProductList({ params }: { params: Params }) {
                 <div className="flex shrink-0 items-center gap-1">
                   <Link
                     href={`/dashboard/${storeSlug}/products/${p.id}`}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-2.5 text-sm font-medium transition-colors hover:bg-muted"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-sm border border-(--line) bg-white px-2.5 text-sm font-medium transition-colors hover:bg-(--ink)/5"
                   >
                     <Pencil className="size-3.5" />
                     Edit
@@ -211,11 +217,12 @@ async function ProductList({ params }: { params: Params }) {
                     <Button
                       type="submit"
                       variant="ghost"
-                      size="sm"
-                      className="text-muted-foreground"
+                      size="icon-sm"
+                      title={p.isActive ? "Arsipkan" : "Aktifkan"}
+                      className="text-(--ink)/60"
                     >
                       {p.isActive ? <Archive /> : <ArchiveRestore />}
-                      <span className="max-sm:sr-only">
+                      <span className="sr-only">
                         {p.isActive ? "Arsipkan" : "Aktifkan"}
                       </span>
                     </Button>
@@ -224,19 +231,19 @@ async function ProductList({ params }: { params: Params }) {
               )}
             </div>
 
-            <ul className="divide-y">
+            <ul className="divide-y divide-(--line)">
               {p.variants.map((v) => {
                 const info = stockInfo(v);
                 return (
                   <li
                     key={v.id}
-                    className="flex flex-col gap-1.5 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                    className="flex items-start justify-between gap-3 px-4 py-3 text-sm"
                   >
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <span
                         className={cn(
                           "font-medium",
-                          !v.isActive && "text-muted-foreground",
+                          !v.isActive && "text-(--ink)/50",
                         )}
                       >
                         {v.name}
@@ -248,24 +255,24 @@ async function ProductList({ params }: { params: Params }) {
                       {!v.isActive && <Badge variant="outline">Nonaktif</Badge>}
                     </div>
 
-                    <div className="flex items-center justify-between gap-4 sm:justify-end">
-                      <span className="font-semibold tabular-nums sm:w-32 sm:text-right">
+                    <div className="shrink-0 space-y-1 text-right">
+                      <p className="font-semibold tabular-nums">
                         {v.isSellable ? (
                           <>
                             {rp(v.price)}
-                            <span className="text-xs font-normal text-muted-foreground">
+                            <span className="text-xs font-normal text-(--ink)/55">
                               /{v.unit}
                             </span>
                           </>
                         ) : (
-                          <span className="font-normal text-muted-foreground">
+                          <span className="font-normal text-(--ink)/55">
                             Tidak dijual
                           </span>
                         )}
-                      </span>
-                      <span
+                      </p>
+                      <p
                         className={cn(
-                          "flex items-center gap-1.5 tabular-nums sm:w-40",
+                          "flex items-center justify-end gap-1.5 text-xs tabular-nums",
                           toneText[info.tone],
                         )}
                       >
@@ -276,7 +283,7 @@ async function ProductList({ params }: { params: Params }) {
                           )}
                         />
                         {info.text}
-                      </span>
+                      </p>
                     </div>
                   </li>
                 );

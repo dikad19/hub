@@ -15,17 +15,22 @@ import { VariantUnitsForm } from "../variant-units-form";
 import { VariantTiersForm } from "../variant-tiers-form";
 import { saveRecipe } from "../recipe-actions";
 import { RecipeForm } from "../recipe-form";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Hub | Product Details",
+};
 
 type Params = Promise<{ storeSlug: string; productId: string }>;
 
 const num = (v: { toString(): string }) =>
   Number(v.toString()).toLocaleString("id-ID", { maximumFractionDigits: 3 });
-
+const display = "font-[family-name:var(--font-display)]";
 export default function EditProductPage({ params }: { params: Params }) {
   return (
     <Suspense
       fallback={
-        <div className="space-y-6">
+        <div className="mx-auto space-y-6">
           <Skeleton className="h-12 w-64" />
           <Skeleton className="h-96 rounded-lg" />
         </div>
@@ -42,7 +47,7 @@ async function EditProduct({ params }: { params: Params }) {
   if (role !== "OWNER") redirect(`/dashboard/${storeSlug}/products`);
 
   // Jenis stok (langsung / resep) dan resep hanya relevan untuk kafe & resto.
-  const isFnb = store.businessType === "FNB";
+  const hasRecipes = store.features.includes("recipes");
 
   const [product, ingredientRows] = await Promise.all([
     prisma.product.findFirst({
@@ -58,8 +63,7 @@ async function EditProduct({ params }: { params: Params }) {
         },
       },
     }),
-    // Daftar bahan hanya dibutuhkan untuk tab Resep
-    isFnb
+    hasRecipes
       ? prisma.productVariant.findMany({
           where: { storeId: store.id, isActive: true, stockMode: "DIRECT" },
           include: { product: { select: { name: true } } },
@@ -91,7 +95,7 @@ async function EditProduct({ params }: { params: Params }) {
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
             Stok saat ini{" "}
-            <span className="font-medium text-foreground">
+            <span className="font-medium text-(--ink)">
               {num(v.stockQty)} {v.unit}
             </span>
             . Stok hanya bisa diubah lewat penyesuaian, supaya tercatat di
@@ -105,7 +109,7 @@ async function EditProduct({ params }: { params: Params }) {
       ),
     });
 
-    if (isFnb) {
+    if (hasRecipes) {
       tabs.push({
         id: "recipe",
         label: "Resep",
@@ -118,7 +122,7 @@ async function EditProduct({ params }: { params: Params }) {
           .join(" · "),
         content: (
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-(--ink)/70">
               Jumlah bahan per 1 porsi, dalam satuan dasar bahan. Stok bahan
               berkurang otomatis saat menu terjual.
             </p>
@@ -177,21 +181,20 @@ async function EditProduct({ params }: { params: Params }) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-1">
-        <Link
-          href={`/dashboard/${storeSlug}/products`}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ChevronLeft className="size-4" />
-          Produk
-        </Link>
-        <h1 className="text-xl font-semibold tracking-tight">Edit produk</h1>
+    <div className="mx-auto space-y-6">
+      <div className="space-y-2">
+        <h1 className={`${display} text-2xl font-bold tracking-tight`}>
+          Edit produk
+        </h1>
+        <p className="text-sm text-(--ink)/70">
+          Ubah detail, harga, dan stok tiap varian.
+        </p>
       </div>
 
       <ProductForm
         action={updateProduct.bind(null, storeSlug, product.id)}
         submitLabel="Simpan perubahan"
+        key={product.variants.map((v) => `${v.id}:${v.stockMode}`).join("|")}
         businessType={store.businessType}
         features={store.features}
         extras={extras}

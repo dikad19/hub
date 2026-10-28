@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import { Bricolage_Grotesque, Figtree, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
+import { Plus_Jakarta_Sans, Inter, IBM_Plex_Mono } from "next/font/google";
 
-const display = Bricolage_Grotesque({
+const display = Plus_Jakarta_Sans({
   subsets: ["latin"],
   variable: "--font-display",
 });
-const body = Figtree({ subsets: ["latin"], variable: "--font-body" });
+const body = Inter({ subsets: ["latin"], variable: "--font-body" });
 const mono = IBM_Plex_Mono({
   subsets: ["latin"],
   weight: ["400", "500"],
@@ -14,9 +14,9 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Hub — Kasir, stok, dan laporan untuk usaha kecil",
+  title: "Hub | Point of sale, stock, and profit for small businesses",
   description:
-    "Hub membantu toko, warung, kafe, dan usaha jasa mencatat penjualan, memantau stok, dan melihat laba harian.",
+    "Hub helps shops, warungs, cafés, and service businesses ring up sales, track stock, and see daily profit.",
 };
 
 export default function RootLayout({
@@ -26,7 +26,7 @@ export default function RootLayout({
 }) {
   return (
     <html
-      lang="id"
+      lang="en"
       className={`${display.variable} ${body.variable} ${mono.variable}`}
     >
       <body className="font-[family-name:var(--font-body)] antialiased">

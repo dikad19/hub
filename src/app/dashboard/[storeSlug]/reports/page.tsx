@@ -17,6 +17,11 @@ import {
 import { METHOD_LABEL } from "@/lib/pos";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Hub | Reports",
+};
 
 type Params = Promise<{ storeSlug: string }>;
 type SP = Promise<{ view?: string; date?: string; month?: string }>;

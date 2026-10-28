@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { ArrowRight, Check, Loader2 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,11 +15,14 @@ import {
   inputClass,
   submitClass,
 } from "@/components/auth-shell";
+import { Metadata } from "next";
 
 export default function RegisterPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [password, setPassword] = useState("");
+  const longEnough = password.length >= 8;
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -34,22 +37,25 @@ export default function RegisterPage() {
     });
 
     setLoading(false);
-    if (error) return setError(error.message ?? "Gagal mendaftar");
+    if (error)
+      return setError(
+        error.message ?? "Couldn't create your account. Please try again.",
+      );
     router.push("/dashboard/new");
   }
 
   return (
     <AuthShell
-      title="Buat akun Hub"
-      description="Daftar, lalu buat toko pertama Anda."
+      title="Create your Hub account"
+      description="Sign up, then set up your first shop."
       footer={
         <>
-          Sudah punya akun?{" "}
+          Already have an account?{" "}
           <Link
             href="/login"
             className="font-semibold text-(--teal) underline underline-offset-4"
           >
-            Masuk
+            Login
           </Link>
         </>
       }
@@ -81,11 +87,23 @@ export default function RegisterPage() {
           <PasswordInput
             id="password"
             name="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
             autoComplete="new-password"
             minLength={8}
             required
           />
-          <p className="text-xs text-(--ink)/60">Minimal 8 karakter.</p>
+          <p
+            className={`flex items-center gap-1.5 text-xs transition-colors ${
+              longEnough ? "text-(--teal)" : "text-(--ink)/60"
+            }`}
+          >
+            <Check
+              className={`size-3.5 transition-opacity ${longEnough ? "opacity-100" : "opacity-30"}`}
+              strokeWidth={3}
+            />
+            At least 8 characters
+          </p>
         </div>
         <FormError message={error} />
         <Button type="submit" className={submitClass} disabled={loading}>

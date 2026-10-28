@@ -28,11 +28,17 @@ export function RecipeForm({
 
   return (
     <form action={formAction} className="space-y-3">
+      {ingredients.length === 0 && (
+        <p className="rounded-sm bg-(--sun)/25 px-3 py-2 text-sm text-(--ink)/80">
+          Belum ada bahan. Buat dulu produk dengan jenis stok &quot;Stok
+          biasa&quot; (misalnya Kopi bubuk, Susu), lalu pilih di sini.
+        </p>
+      )}
       <input type="hidden" name="lines" value={JSON.stringify(lines)} />
       {lines.map((l, i) => (
         <div key={i} className="flex items-center gap-2">
           <select
-            className="h-9 flex-1 rounded-md border bg-background px-2 text-sm"
+            className="h-9 flex-1 rounded-sm border border-(--line) bg-white px-2 text-sm"
             value={l.ingredientVariantId}
             onChange={(e) => patch(i, { ingredientVariantId: e.target.value })}
           >
@@ -81,7 +87,7 @@ export function RecipeForm({
         {state.error && (
           <span className="text-sm text-red-600">{state.error}</span>
         )}
-        {state.ok && <span className="text-sm text-green-600">Tersimpan</span>}
+        {state.ok && <span className="text-sm text-(--teal)">Tersimpan</span>}
       </div>
     </form>
   );

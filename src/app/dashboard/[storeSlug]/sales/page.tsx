@@ -5,6 +5,11 @@ import { prisma } from "@/lib/prisma";
 import { requireStoreAccess } from "@/lib/tenant";
 import { METHOD_LABEL } from "@/lib/pos";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Hub | Sales",
+};
 
 type Params = Promise<{ storeSlug: string }>;
 

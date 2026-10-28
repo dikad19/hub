@@ -6,6 +6,11 @@ import { requireStoreAccess } from "@/lib/tenant";
 import { Skeleton } from "@/components/ui/skeleton";
 import { createProduct } from "../actions";
 import { ProductForm } from "../product-form";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Hub | New Product",
+};
 
 type Params = Promise<{ storeSlug: string }>;
 

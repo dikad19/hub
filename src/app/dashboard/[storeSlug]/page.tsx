@@ -34,6 +34,11 @@ import {
 } from "@/components/ui/table";
 import { SalesChart, type ChartPoint } from "./sales-chart";
 import { hasFeature } from "@/lib/features";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Hub | Dashboard",
+};
 
 type Params = Promise<{ storeSlug: string }>;
 type Ctx = {
