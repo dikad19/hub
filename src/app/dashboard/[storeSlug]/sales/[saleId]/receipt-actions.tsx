@@ -59,15 +59,17 @@ export function ReceiptActions({
 
       {canVoid && (
         <Dialog open={open} onOpenChange={onOpenChange}>
-          <DialogTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              className="text-red-600 hover:text-red-700"
-            >
-              <Ban className="mr-2 size-4" />
-              Batalkan (void)
-            </Button>
+          <DialogTrigger
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                className="text-red-600 hover:text-red-700"
+              />
+            }
+          >
+            <Ban className="mr-2 size-4" />
+            Batalkan (void)
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>

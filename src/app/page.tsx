@@ -99,14 +99,19 @@ export default function LandingPage() {
             </a>
           </nav>
           <div className="flex items-center gap-2">
-            <Button asChild variant="ghost">
-              <Link href="/login">Login</Link>
+            <Button
+              render={<Link href="/login" />}
+              nativeButton={false}
+              variant="ghost"
+            >
+              Login
             </Button>
             <Button
-              asChild
+              render={<Link href="/register" />}
+              nativeButton={false}
               className="bg-(--teal) rounded-sm text-white hover:bg-(--teal)"
             >
-              <Link href="/register">Register</Link>
+              Register
             </Button>
           </div>
         </div>
@@ -133,19 +138,21 @@ export default function LandingPage() {
               className="rise mt-8 flex flex-wrap gap-3"
             >
               <Button
-                asChild
+                render={<Link href="/register" />}
+                nativeButton={false}
                 size="lg"
                 className="bg-(--teal) text-white rounded-sm hover:bg-(--ink)"
               >
-                <Link href="/register">Register now</Link>
+                Register now
               </Button>
               <Button
-                asChild
+                render={<a href="#fitur" />}
+                nativeButton={false}
                 size="lg"
                 variant="outline"
                 className="border-(--ink)/30 rounded-sm bg-transparent"
               >
-                <a href="#fitur">Lihat fitur</a>
+                Lihat fitur
               </Button>
             </div>
           </div>
@@ -280,7 +287,7 @@ export default function LandingPage() {
             >
               Questions, answered.
             </h2>
-            <Accordion type="single" collapsible className="mt-10">
+            <Accordion className="mt-10">
               {[
                 [
                   "Can cashiers see cost prices and reports?",
