@@ -230,7 +230,7 @@ export async function createPurchase(
             select: { stockQty: true },
           });
 
-          if (c.v.trackStock) {
+          if (c.v.stockMode !== "NONE") {
             await tx.stockMovement.create({
               data: {
                 storeId: store.id,

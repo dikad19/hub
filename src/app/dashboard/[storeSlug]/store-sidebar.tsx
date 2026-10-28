@@ -46,7 +46,7 @@ type NavItem = {
   label: string;
   icon: LucideIcon;
   exact?: boolean;
-  feature?: Feature;
+  feature?: Feature; // menu hanya tampil kalau fitur ini aktif di toko
 };
 type NavGroup = { label: string; items: NavItem[] };
 
