@@ -152,7 +152,7 @@ export default function LandingPage() {
                 variant="outline"
                 className="border-(--ink)/30 rounded-sm bg-transparent"
               >
-                Lihat fitur
+                See features
               </Button>
             </div>
           </div>
